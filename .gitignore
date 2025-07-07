@@ -1,0 +1,26 @@
+# 忽略模型、结果、脚本和特定数据
+models/
+results/
+scripts/
+data/
+examples/
+# Python 缓存和临时文件
+*.pyc
+__pycache__/
+*.log
+*.tmp
+*.cache
+
+# 编辑器和操作系统文件
+.vscode/
+.DS_Store
+Thumbs.db
+.history
+
+# Jupyter Notebook 检查点
+.ipynb_checkpoints/
+
+# 虚拟环境
+venv/
+.env/
+env/

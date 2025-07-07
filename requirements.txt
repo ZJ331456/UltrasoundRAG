@@ -1,0 +1,42 @@
+# RAG系统依赖包
+llama-index-core
+# ChromaDB 向量数据库
+llama-index-vector-stores-chroma
+chromadb
+torch
+transformers
+sentence-transformers
+numpy
+pandas
+
+# FAISS向量数据库 (选择GPU或CPU版本)
+# 对于GPU版本：
+# faiss-gpu
+# 对于CPU版本：
+# faiss-cpu
+
+# 中文分词库（用于BM25稀疏检索）
+jieba
+
+# 可视化相关包
+matplotlib
+seaborn
+
+# 配置文件处理
+pyyaml
+
+# 其他可能需要的包
+accelerate
+tokenizers
+
+# 评估包
+ragas
+sacrebleu
+
+# Streamlit前端界面
+streamlit
+plotly
+altair
+
+# 数据处理和展示
+pandas
