@@ -56,7 +56,8 @@ UltrasoundRAG/
 │   │   ├── rerank_utils.py            # 重排序工具
 │   │   └── retrival_utils.py          # 检索工具函数
 │   ├── __init__.py           # 包初始化文件
-│   └── medicalrag.py         # 主程序入口
+│   ├── medicalrag.py         # 主程序入口
+│   └── streamlit_app.py      # Streamlit Web UI 入口
 ├── models/              # 模型目录（不上传到Git）
 │   ├── bge-m3/               # BGE-M3嵌入模型
 │   ├── bge-small-zh-v1.5/    # BGE中文小型嵌入模型
@@ -80,7 +81,8 @@ UltrasoundRAG/
 
 ### 核心模块说明
 
-1. **MedicalRAG/medicalrag.py**: 系统主入口，包含交互式界面和主要功能实现
+1. **streamlit_app.py**: 基于 Streamlit 的 Web UI 界面，提供友好的交互式问答、图片检索和索引管理功能。
+2. **MedicalRAG/medicalrag.py**: 系统核心逻辑和命令行入口，包含交互式界面和主要功能实现
 2. **MedicalRAG/config/**: 配置管理，控制系统行为和模型路径
 3. **MedicalRAG/index/**: 负责文档和图像的索引创建
 4. **MedicalRAG/retrival/**: 实现混合检索和图像查询功能
@@ -149,7 +151,20 @@ UltrasoundRAG/
 
 ## 启动与使用
 
-### 1. **交互式命令行模式**
+### 1. **Web UI 模式 (推荐)**
+
+通过 Streamlit 启动一个可视化的交互界面，支持文本问答、图片上传检索和在线重建索引等功能。
+
+```bash
+streamlit run streamlit_app.py
+```
+
+- **功能介绍**:
+  - **问答查询**: 在左侧输入框输入问题，点击“生成答案”即可。
+  - **图片检索**: 支持上传图片，系统会结合文本问题和图片内容进行联合检索。
+  - **索引管理**: 在“高级管理选项”中，可以一键重建知识库索引。
+
+### 2. **交互式命令行模式**
 
 ```bash
 python -m MedicalRAG/medicalrag
@@ -158,7 +173,7 @@ python -m MedicalRAG/medicalrag
 - 按提示选择是否重建索引、运行模式（交互/文件/默认测试）。
 - 交互模式下可直接输入问题进行检索与问答。
 
-### 2. **批量问答/评估**
+### 3. **批量问答/评估**
 
 - 将问题列表写入 json 文件（如 `data/truth_query.json`），选择"文件模式"运行。
 
