@@ -26,7 +26,7 @@ from MedicalRAG.utils.logger import setup_logger
 from MedicalRAG.utils.retrival_utils import HybridSearchEngine, RetrievalResult
 from MedicalRAG.utils.answer_generator import AnswerGenerator
 from MedicalRAG.index.run_custom_indexer import run_custom_indexer
-from MedicalRAG.retrival.query_images import CaptionImageMatcher, ImageSearcher
+from MedicalRAG.retrival.query_images import UnifiedImageSearcher
 from MedicalRAG.config.config import get_chroma_client
 
 
@@ -42,8 +42,7 @@ class MedicalRAGSystem:
         # 初始化核心组件
         self.search_engine = None
         self.answer_generator = None
-        self.image_matcher = None
-        self.image_searcher = None # 新增：用于以图搜图
+        self.image_searcher = None
         
         # 会话相关
         self.current_session_results = []
@@ -72,18 +71,10 @@ class MedicalRAGSystem:
                     self.logger.error(f"无法创建或获取图像集合 '{collection_name}': {e}", exc_info=True)
                     raise  # 如果无法创建集合，这是一个致命错误
 
-                # 用于文本搜图片的匹配器
-                self.image_matcher = CaptionImageMatcher(
-                    text_embedding_model_path=image_config['text_to_image']['embedding_model'],
-                    chroma_persist_dir=image_config['vectorstore_path'],
-                    collection_name=collection_name
-                )
-                
-                # 新增：用于图片搜图片的搜索器
-                self.image_searcher = ImageSearcher(
+                # 初始化统一的图像搜索器
+                self.image_searcher = UnifiedImageSearcher(
                     image_model_path=image_config['image_to_image']['embedding_model'],
-                    chroma_persist_dir=image_config['vectorstore_path'],
-                    collection_name=collection_name
+                    text_embedding_model_path=image_config['text_to_image']['embedding_model']
                 )
 
                 self.logger.info("图像检索组件初始化成功")
@@ -187,7 +178,7 @@ class MedicalRAGSystem:
             # --- 阶段3: 从文本中提取描述并关联图像 ---
             image_from_text_results: List[RetrievalResult] = []
             found_image_paths = set() # 用于避免重复添加相同的图片
-            if enable_image_search and self.image_matcher and self.image_matcher.initialized:
+            if enable_image_search and self.image_searcher and self.image_searcher.initialized:
                 self.logger.info("开始从检索到的文本中关联图像...")
                 # 预编译正则表达式以提取图片标题
                 caption_pattern = re.compile(r"(图\d+-\d+\s+[\w\s（）(),]+)")
@@ -203,7 +194,7 @@ class MedicalRAGSystem:
                         self.logger.info(f"从文本块中提取到图片标题进行搜索: '{caption}'")
                         
                         # 使用提取到的标题精确搜索图片，只取最相关的那一张
-                        raw_image_results = self.image_matcher.search(caption, top_n=1)
+                        raw_image_results = self.image_searcher.search_by_text(caption, top_n=1)
                         
                         # 如果找到了图片，则处理并添加到结果列表
                         if raw_image_results and raw_image_results.get('ids') and raw_image_results['ids'][0]:
