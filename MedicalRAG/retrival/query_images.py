@@ -1,39 +1,40 @@
-"""
-图像检索模块
+"""图像检索模块
 
 主要功能:
 本模块提供图像检索的核心功能，支持两种主要的检索方式：
-1.  **以文搜图**: 通过 `CaptionImageMatcher` 类，根据文本描述在图像标题中进行语义搜索。
-2.  **以图搜图**: 通过 `ImageSearcher` 类，根据输入的图像在向量数据库中查找相似的图像。
+1. **以文搜图**: 通过文本描述在图像标题中进行语义搜索
+2. **以图搜图**: 通过输入图像在向量数据库中查找相似图像
 
 核心组件:
--   `ImageSearcher`: 负责处理图像到图像的相似性搜索。
--   `CaptionImageMatcher`: 负责处理文本到图像的语义匹配。
--   `main()`: 提供一个命令行界面，用于测试和演示上述两种搜索功能。
+- `BaseImageSearcher`: 图像搜索基类，提供公共功能
+- `ImageSearcher`: 图像到图像的相似性搜索
+- `CaptionImageMatcher`: 文本到图像的语义匹配
+- `UnifiedImageSearcher`: 统一的图像搜索接口
 """
-import sys
 import os
-from MedicalRAG.config.config import get_image_collection
-import numpy as np
-from sentence_transformers import SentenceTransformer
-from PIL import Image
+import sys
+from typing import Optional, Dict, Any, List
+from abc import ABC, abstractmethod
+
+import chromadb
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-from tqdm import tqdm
+from PIL import Image
+from sentence_transformers import SentenceTransformer
 from transformers import CLIPModel, CLIPImageProcessor
+from chromadb.config import Settings
 
-# 将项目根目录添加到 sys.path
+# 添加项目根目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from MedicalRAG.config.config import get_image_collection, config_manager
 from MedicalRAG.utils.logger import setup_logger
 from MedicalRAG.utils.image_utils import get_image_embedding
-from MedicalRAG.config.config import config_manager
 
 
-def find_chinese_font():
+def find_chinese_font() -> Optional[str]:
     """找到一个可用的中文字体"""
     font_paths = fm.findSystemFonts(fontpaths=None, fontext='ttf')
-    # 按顺序检查，找到第一个就返回
     font_check_order = ['Microsoft YaHei', 'SimHei', 'KaiTi', 'FangSong', 'Heiti', 'Arial Unicode MS']
     
     for font_name_check in font_check_order:
@@ -42,258 +43,409 @@ def find_chinese_font():
                 font_name = fm.FontProperties(fname=font_path).get_name()
                 if font_name_check in font_name:
                     return font_path
-            except:
+            except Exception:
                 continue
     
-    # 如果以上都没找到，返回None
     return None
 
-class ImageSearcher:
-    """
-    一个通过输入图片来查找相似图片的类。
-    """
-    def __init__(self, image_model_path, chroma_persist_dir, collection_name):
-        self.IMAGE_MODEL_PATH = image_model_path
-        self.CHROMA_PERSIST_DIR = chroma_persist_dir
-        self.COLLECTION_NAME = collection_name
-        
-        self._load_models()
-        self._connect_to_db()
 
-    def _load_models(self):
-        print(f"Loading image model from {self.IMAGE_MODEL_PATH}...")
-        try:
-            self.image_model = CLIPModel.from_pretrained(self.IMAGE_MODEL_PATH)
-            self.image_processor = CLIPImageProcessor.from_pretrained(self.IMAGE_MODEL_PATH)
-        except Exception as e:
-            print(f"Error loading image model: {e}")
-            raise
-
-    def _connect_to_db(self):
-        print(f"Connecting to ChromaDB...")
-        # 直接获取图像集合
-        self.collection = get_image_collection()
-        print(f"Successfully connected to collection '{self.COLLECTION_NAME}'.")
-
-    def search_by_image(self, image_path: str, top_n: int = 5):
-        """
-        根据给定的图片路径，在索引中搜索最相似的图片。
-        """
-        if not os.path.exists(image_path):
-            print(f"Error: Image file not found at {image_path}")
-            return None
-
-        print(f"\nEncoding query image: '{image_path}'")
-        query_embedding = get_image_embedding(image_path, self.image_model, self.image_processor)
-        if query_embedding is None:
-            return None
-
-        print("Searching for similar images in the database...")
-        results = self.collection.query(
-            query_embeddings=[query_embedding.flatten().tolist()],
-            n_results=top_n + 1 # 请求 N+1 个结果，以防查询本身被过滤
-        )
-        
-        # 如果结果不为空，并且返回的数量超过了请求的数量，则截断
-        if results and results['ids'] and len(results['ids'][0]) > top_n:
-            for key in results:
-                if results[key] and isinstance(results[key], list) and len(results[key]) > 0:
-                    results[key] = [lst[:top_n] for lst in results[key]]
-
-        return results
-
-
-class CaptionImageMatcher:
-    """
-    一个通过语义搜索图片标题(caption)来查找图片的类。
-    它在初始化时加载模型和数据，以提供快速的后续查询。
-    """
-    def __init__(self, text_embedding_model_path, chroma_persist_dir, collection_name):
-        self.TEXT_EMBEDDING_MODEL = text_embedding_model_path
-        self.CHROMA_PERSIST_DIR = chroma_persist_dir
-        self.COLLECTION_NAME = collection_name
-        self.logger = setup_logger(__name__)
+class BaseImageSearcher(ABC):
+    """图像搜索基类，提供公共功能"""
+    
+    def __init__(self):
+        self.logger = setup_logger(self.__class__.__name__)
         self.initialized = False
+        self.config = config_manager.config.get('image_search', {})
+    
+    def _validate_config(self, required_keys: List[str]) -> bool:
+        """验证配置是否包含必需的键"""
+        for key in required_keys:
+            if key not in self.config:
+                self.logger.error(f"配置中缺少必需的键: {key}")
+                return False
+        return True
+    
+    def _handle_error(self, operation: str, error: Exception) -> None:
+        """统一的错误处理"""
+        self.logger.error(f"{operation}失败: {error}", exc_info=True)
+        self.initialized = False
+    
+    @abstractmethod
+    def search(self, *args, **kwargs) -> Optional[Dict[str, Any]]:
+        """抽象搜索方法"""
+        pass
+
+class ImageSearcher(BaseImageSearcher):
+    """图像到图像的相似性搜索器"""
+    
+    def __init__(self, image_model_path: str, chroma_persist_dir: str = None, collection_name: str = None):
+        super().__init__()
+        self.image_model_path = image_model_path
+        self.image_model = None
+        self.image_processor = None
+        self.collection = None
         
-        self._load_model()
-        self._build_caption_index()
-
-    def _load_model(self):
-        print(f"Loading text embedding model: {self.TEXT_EMBEDDING_MODEL}...")
-        self.text_model = SentenceTransformer(self.TEXT_EMBEDDING_MODEL)
-
-    def _build_caption_index(self):
-        self.logger.info(f"Loading image metadata from ChromaDB collection...")
         try:
-            image_collection = get_image_collection()
-            all_data = image_collection.get(include=["metadatas", "documents"])
-
-            captions_with_metadata = []
-            if all_data and all_data.get('metadatas'):
-                for meta, doc in zip(all_data['metadatas'], all_data['documents']):
-                    # full_caption 优先，兼容旧数据
-                    caption = meta.get('full_caption', doc)
-                    image_path = meta.get('image_path')
-                    if caption and image_path:
-                        captions_with_metadata.append({
-                            'caption': caption,
-                            'image_path': image_path
-                        })
-
-            self.captions_with_metadata = captions_with_metadata
-            
-            if not self.captions_with_metadata:
-                self.logger.warning("数据库中未找到有效的图片标题或图片路径，文本搜图功能将不可用。")
-                self.caption_collection = None
-                self.initialized = False
-                return
-
-            all_captions = [item['caption'] for item in self.captions_with_metadata]
-
-            self.logger.info(f"为 {len(all_captions)} 个图片标题创建内存中的语义索引...")
-            # 创建临时内存集合用于标题搜索
-            import chromadb
-            from chromadb.config import Settings
-            in_memory_client = chromadb.Client(settings=Settings(anonymized_telemetry=False))
-            self.caption_collection = in_memory_client.create_collection(
-                name="image_captions_temp",
-                metadata={"hnsw:space": "cosine"}
-            )
-
-            caption_embeddings = self.text_model.encode(all_captions, convert_to_tensor=False, show_progress_bar=True)
-            
-            self.caption_collection.add(
-                embeddings=caption_embeddings.tolist(),
-                documents=all_captions,
-                metadatas=[{'image_path': item['image_path']} for item in self.captions_with_metadata],
-                ids=[str(i) for i in range(len(all_captions))]
-            )
-            self.logger.info("图片标题索引构建成功。")
+            self._load_models()
+            self._connect_to_db()
             self.initialized = True
-
+            self.logger.info("ImageSearcher 初始化成功")
         except Exception as e:
-            self.logger.error(f"构建图片标题索引时出错: {e}", exc_info=True)
-            self.caption_collection = None
-            self.initialized = False
-
-    def search(self, query_text: str, top_n: int = 5):
-        """
-        根据给定的文本查询，在标题索引中搜索最相似的图片。
-        """
-        if not self.initialized or not self.caption_collection:
-            self.logger.warning("CaptionImageMatcher 未成功初始化，无法执行搜索。")
+            self._handle_error("ImageSearcher 初始化", e)
+    
+    def _load_models(self) -> None:
+        """加载图像模型"""
+        self.logger.info(f"正在加载图像模型: {self.image_model_path}")
+        self.image_model = CLIPModel.from_pretrained(self.image_model_path)
+        self.image_processor = CLIPImageProcessor.from_pretrained(self.image_model_path)
+    
+    def _connect_to_db(self) -> None:
+        """连接到数据库"""
+        self.logger.info("正在连接到 ChromaDB")
+        self.collection = get_image_collection()
+        self.logger.info("成功连接到图像集合")
+    
+    def search(self, image_path: str, top_n: int = 5) -> Optional[Dict[str, Any]]:
+        """根据图像路径搜索相似图像"""
+        return self.search_by_image(image_path, top_n)
+    
+    def search_by_image(self, image_path: str, top_n: int = 5) -> Optional[Dict[str, Any]]:
+        """根据给定的图片路径，在索引中搜索最相似的图片"""
+        if not self.initialized:
+            self.logger.warning("ImageSearcher 未正确初始化")
+            return None
+        
+        if not os.path.exists(image_path):
+            self.logger.error(f"图像文件不存在: {image_path}")
+            return None
+        
+        try:
+            self.logger.info(f"正在编码查询图像: {image_path}")
+            query_embedding = get_image_embedding(image_path, self.image_model, self.image_processor)
+            if query_embedding is None:
+                return None
+            
+            self.logger.info("正在数据库中搜索相似图像")
+            results = self.collection.query(
+                query_embeddings=[query_embedding.flatten().tolist()],
+                n_results=top_n + 1  # 请求 N+1 个结果，以防查询本身被过滤
+            )
+            
+            # 截断结果到指定数量
+            if results and results.get('ids') and len(results['ids'][0]) > top_n:
+                for key in results:
+                    if results[key] and isinstance(results[key], list) and len(results[key]) > 0:
+                        results[key] = [lst[:top_n] for lst in results[key]]
+            
+            return results
+            
+        except Exception as e:
+            self._handle_error("图像搜索", e)
             return None
 
-        self.logger.info(f"\n编码查询: '{query_text}'")
-        query_embedding = self.text_model.encode(query_text, convert_to_tensor=False)
 
-        self.logger.info("搜索相似的图片标题...")
-        results = self.caption_collection.query(
-            query_embeddings=[query_embedding.tolist()],
-            n_results=top_n
+class CaptionImageMatcher(BaseImageSearcher):
+    """文本到图像的语义匹配搜索器"""
+    
+    def __init__(self, text_embedding_model_path: str, chroma_persist_dir: str = None, collection_name: str = None):
+        super().__init__()
+        self.text_embedding_model_path = text_embedding_model_path
+        self.text_model = None
+        self.caption_collection = None
+        self.captions_with_metadata = []
+        
+        try:
+            self._load_model()
+            self._build_caption_index()
+            self.logger.info("CaptionImageMatcher 初始化成功")
+        except Exception as e:
+            self._handle_error("CaptionImageMatcher 初始化", e)
+    
+    def _load_model(self) -> None:
+        """加载文本嵌入模型"""
+        self.logger.info(f"正在加载文本嵌入模型: {self.text_embedding_model_path}")
+        self.text_model = SentenceTransformer(self.text_embedding_model_path)
+    
+    def _build_caption_index(self) -> None:
+        """构建图片标题索引"""
+        self.logger.info("正在从 ChromaDB 加载图像元数据")
+        
+        image_collection = get_image_collection()
+        all_data = image_collection.get(include=["metadatas", "documents"])
+        
+        # 提取标题和元数据
+        if all_data and all_data.get('metadatas'):
+            for meta, doc in zip(all_data['metadatas'], all_data['documents']):
+                caption = meta.get('full_caption', doc)
+                image_path = meta.get('image_path')
+                if caption and image_path:
+                    self.captions_with_metadata.append({
+                        'caption': caption,
+                        'image_path': image_path
+                    })
+        
+        if not self.captions_with_metadata:
+            self.logger.warning("数据库中未找到有效的图片标题或图片路径，文本搜图功能将不可用")
+            self.initialized = False
+            return
+        
+        # 创建内存中的标题索引
+        all_captions = [item['caption'] for item in self.captions_with_metadata]
+        self.logger.info(f"为 {len(all_captions)} 个图片标题创建内存中的语义索引")
+        
+        in_memory_client = chromadb.Client(settings=Settings(anonymized_telemetry=False))
+        self.caption_collection = in_memory_client.create_collection(
+            name="image_captions_temp",
+            metadata={"hnsw:space": "cosine"}
         )
-        return results
+        
+        # 编码标题并添加到集合
+        caption_embeddings = self.text_model.encode(
+            all_captions, 
+            convert_to_tensor=False, 
+            show_progress_bar=True
+        )
+        
+        self.caption_collection.add(
+            embeddings=caption_embeddings.tolist(),
+            documents=all_captions,
+            metadatas=[{'image_path': item['image_path']} for item in self.captions_with_metadata],
+            ids=[str(i) for i in range(len(all_captions))]
+        )
+        
+        self.logger.info("图片标题索引构建成功")
+        self.initialized = True
+    
+    def search(self, query_text: str, top_n: int = 5) -> Optional[Dict[str, Any]]:
+        """根据文本查询搜索相关图像"""
+        if not self.initialized or not self.caption_collection:
+            self.logger.warning("CaptionImageMatcher 未成功初始化，无法执行搜索")
+            return None
+        
+        try:
+            self.logger.info(f"正在编码查询: {query_text}")
+            query_embedding = self.text_model.encode(query_text, convert_to_tensor=False)
+            
+            self.logger.info("正在搜索相似的图片标题")
+            results = self.caption_collection.query(
+                query_embeddings=[query_embedding.tolist()],
+                n_results=top_n
+            )
+            return results
+            
+        except Exception as e:
+            self._handle_error("文本搜索图像", e)
+            return None
 
-def display_results(results, image_base_path):
-    """通用函数，用于显示文本或图片搜索的结果。"""
-    if not results or not results['ids'] or not results['ids'][0]:
-        print("没有找到相关的图片。")
-        return
-
-    chinese_font_path = find_chinese_font()
-    my_font = fm.FontProperties(fname=chinese_font_path) if chinese_font_path else fm.FontProperties()
-    if not chinese_font_path:
-         print("警告: 未找到中文字体，标题可能无法正确显示。")
-
-    for i in range(len(results['ids'][0])):
-        distance = results['distances'][0][i]
-        metadata = results['metadatas'][0][i]
+class ImageDisplayer:
+    """图像结果显示器"""
+    
+    def __init__(self, image_base_path: str):
+        self.image_base_path = image_base_path
+        self.font = self._setup_font()
+        self.logger = setup_logger(self.__class__.__name__)
+    
+    def _setup_font(self) -> fm.FontProperties:
+        """设置中文字体"""
+        chinese_font_path = find_chinese_font()
+        if chinese_font_path:
+            return fm.FontProperties(fname=chinese_font_path)
+        else:
+            print("警告: 未找到中文字体，标题可能无法正确显示")
+            return fm.FontProperties()
+    
+    def display_results(self, results: Optional[Dict[str, Any]]) -> None:
+        """显示搜索结果"""
+        if not results or not results.get('ids') or not results['ids'][0]:
+            print("没有找到相关的图片")
+            return
+        
+        for i in range(len(results['ids'][0])):
+            self._display_single_result(results, i)
+    
+    def _display_single_result(self, results: Dict[str, Any], index: int) -> None:
+        """显示单个搜索结果"""
+        distance = results['distances'][0][index]
+        metadata = results['metadatas'][0][index]
         caption = metadata.get('full_caption', metadata.get('caption', 'N/A'))
-        image_path = os.path.join(image_base_path, metadata['image_path'])
-
-        print(f"\n结果 {i+1}:")
-        print(f"  Distance (similarity score): {distance:.4f}")
-        print(f"  Caption: {caption}")
-        print(f"  Image Path: {image_path}")
-
+        image_path = os.path.join(self.image_base_path, metadata['image_path'])
+        
+        print(f"\n结果 {index + 1}:")
+        print(f"  相似度分数: {1 - distance:.4f}")
+        print(f"  图片描述: {caption}")
+        print(f"  图片路径: {image_path}")
+        
+        self._show_image(image_path, caption)
+    
+    def _show_image(self, image_path: str, caption: str) -> None:
+        """显示图片"""
         try:
             img = Image.open(image_path)
-            plt.figure()
+            plt.figure(figsize=(8, 6))
             plt.imshow(img)
-            plt.title(caption, fontproperties=my_font, pad=20)
+            plt.title(caption, fontproperties=self.font, pad=20)
             plt.axis('off')
-            plt.figtext(0.5, 0.05, image_path, wrap=True, horizontalalignment='center', fontsize=10, fontproperties=my_font)
+            plt.figtext(0.5, 0.02, image_path, wrap=True, 
+                       horizontalalignment='center', fontsize=8, 
+                       fontproperties=self.font)
+            plt.tight_layout()
             plt.show()
         except FileNotFoundError:
-            print(f"  错误: 图片文件未找到 at {image_path}")
+            self.logger.error(f"图片文件未找到: {image_path}")
         except Exception as e:
-            print(f"  错误: 显示图片时出错: {e}")
+            self.logger.error(f"显示图片时出错: {e}")
 
 
-def main():
-    # --- 从配置加载参数 ---
-    config = config_manager.config
-    search_config = config['image_search']
+class ImageSearchCLI:
+    """图像搜索命令行界面"""
     
-    TEXT_EMBEDDING_MODEL = search_config['text_to_image']['embedding_model']
-    IMAGE_MODEL_PATH = search_config['image_to_image']['embedding_model']
-    CHROMA_PERSIST_DIR = search_config['vectorstore_path']
-    COLLECTION_NAME = search_config['collection_name']
-    IMAGE_BASE_PATH = search_config['image_base_path']
-    DEFAULT_TOP_N = search_config['top_n']
-
-    while True:
+    def __init__(self):
+        self.config = config_manager.config.get('image_search', {})
+        self.logger = setup_logger(self.__class__.__name__)
+        self.displayer = ImageDisplayer(self.config.get('image_base_path', ''))
+        
+        # 从配置加载参数
+        self.text_model_path = self.config.get('text_to_image', {}).get('embedding_model')
+        self.image_model_path = self.config.get('image_to_image', {}).get('embedding_model')
+        self.default_top_n = self.config.get('top_n', 5)
+    
+    def run(self) -> None:
+        """运行交互式搜索界面"""
+        print("\n=== 图像搜索系统 ===")
+        
+        while True:
+            try:
+                mode = self._get_search_mode()
+                if mode == 'exit':
+                    break
+                elif mode == '1':
+                    self._text_search_mode()
+                elif mode == '2':
+                    self._image_search_mode()
+                else:
+                    print("无效的选项，请输入 1, 2, 或 'exit'")
+            except KeyboardInterrupt:
+                print("\n\n程序被用户中断")
+                break
+            except Exception as e:
+                self.logger.error(f"运行时错误: {e}", exc_info=True)
+                print(f"发生错误: {e}")
+    
+    def _get_search_mode(self) -> str:
+        """获取搜索模式"""
         print("\n--- 请选择搜索模式 ---")
         print("1. 按文本描述搜索")
         print("2. 按图片搜索")
-        mode = input("请输入选项 (1 or 2, 输入 'exit' 退出): ")
-
-        if mode.lower() == 'exit':
-            break
-        
-        if mode == '1':
-            # --- 文本搜索模式 ---
-            try:
-                matcher = CaptionImageMatcher(
-                    text_embedding_model_path=TEXT_EMBEDDING_MODEL,
-                    chroma_persist_dir=CHROMA_PERSIST_DIR,
-                    collection_name=COLLECTION_NAME
-                )
-            except (ValueError, FileNotFoundError) as e:
-                print(f"Failed to initialize CaptionImageMatcher: {e}")
-                continue
-
-            query_text = input("\n请输入您想查询的图片描述: ")
-            top_n_str = input(f"您希望返回多少个结果? (默认: {DEFAULT_TOP_N}): ")
-            top_n = int(top_n_str) if top_n_str.isdigit() else DEFAULT_TOP_N
-
+        return input("请输入选项 (1 or 2, 输入 'exit' 退出): ").strip().lower()
+    
+    def _get_top_n(self) -> int:
+        """获取返回结果数量"""
+        top_n_str = input(f"您希望返回多少个结果? (默认: {self.default_top_n}): ").strip()
+        return int(top_n_str) if top_n_str.isdigit() else self.default_top_n
+    
+    def _text_search_mode(self) -> None:
+        """文本搜索模式"""
+        try:
+            matcher = CaptionImageMatcher(self.text_model_path)
+            if not matcher.initialized:
+                print("文本搜索器初始化失败")
+                return
+            
+            query_text = input("\n请输入您想查询的图片描述: ").strip()
+            if not query_text:
+                print("查询文本不能为空")
+                return
+            
+            top_n = self._get_top_n()
             results = matcher.search(query_text, top_n=top_n)
+            
             print("\n--- 文本搜索结果 ---")
-            display_results(results, IMAGE_BASE_PATH)
-
-        elif mode == '2':
-            # --- 图片搜索模式 ---
-            try:
-                searcher = ImageSearcher(
-                    image_model_path=IMAGE_MODEL_PATH,
-                    chroma_persist_dir=CHROMA_PERSIST_DIR,
-                    collection_name=COLLECTION_NAME
-                )
-            except (ValueError, FileNotFoundError) as e:
-                print(f"Failed to initialize ImageSearcher: {e}")
-                continue
+            self.displayer.display_results(results)
+            
+        except Exception as e:
+            self.logger.error(f"文本搜索失败: {e}", exc_info=True)
+            print(f"文本搜索失败: {e}")
+    
+    def _image_search_mode(self) -> None:
+        """图片搜索模式"""
+        try:
+            searcher = ImageSearcher(self.image_model_path)
+            if not searcher.initialized:
+                print("图像搜索器初始化失败")
+                return
             
             query_image_path = input("\n请输入查询图片的完整路径: ").strip()
-            top_n_str = input(f"您希望返回多少个结果? (默认: {DEFAULT_TOP_N}): ")
-            top_n = int(top_n_str) if top_n_str.isdigit() else DEFAULT_TOP_N
-
+            if not query_image_path:
+                print("图片路径不能为空")
+                return
+            
+            top_n = self._get_top_n()
             results = searcher.search_by_image(query_image_path, top_n=top_n)
+            
             print("\n--- 图片搜索结果 ---")
-            display_results(results, IMAGE_BASE_PATH)
+            self.displayer.display_results(results)
+            
+        except Exception as e:
+            self.logger.error(f"图片搜索失败: {e}", exc_info=True)
+            print(f"图片搜索失败: {e}")
 
-        else:
-            print("无效的选项，请输入 1, 2, 或 'exit'.")
+
+class UnifiedImageSearcher:
+    """统一的图像搜索器，整合了以图搜图和以文搜图功能"""
+    
+    def __init__(self, image_model_path: str, text_embedding_model_path: str):
+        self.logger = setup_logger(self.__class__.__name__)
+        self.initialized = False
+        
+        try:
+            # 初始化两个搜索器
+            self.image_searcher = ImageSearcher(image_model_path)
+            self.caption_matcher = CaptionImageMatcher(text_embedding_model_path)
+            
+            # 只有当两个搜索器都初始化成功时，才认为统一搜索器初始化成功
+            self.initialized = (
+                self.image_searcher.initialized and 
+                self.caption_matcher.initialized
+            )
+            
+            if self.initialized:
+                self.logger.info("UnifiedImageSearcher 初始化成功")
+            else:
+                self.logger.warning("UnifiedImageSearcher 部分组件初始化失败")
+                
+        except Exception as e:
+            self.logger.error(f"UnifiedImageSearcher 初始化失败: {e}", exc_info=True)
+            self.initialized = False
+    
+    def search_by_image(self, image_path: str, top_n: int = 5) -> Optional[Dict[str, Any]]:
+        """根据图像搜索相似图像"""
+        if not self.initialized or not self.image_searcher.initialized:
+            self.logger.warning("图像搜索器未正确初始化")
+            return None
+        
+        return self.image_searcher.search_by_image(image_path, top_n)
+    
+    def search_by_text(self, query_text: str, top_n: int = 5) -> Optional[Dict[str, Any]]:
+        """根据文本搜索相关图像"""
+        if not self.initialized or not self.caption_matcher.initialized:
+            self.logger.warning("文本搜索器未正确初始化")
+            return None
+        
+        return self.caption_matcher.search(query_text, top_n)
+    
+    def is_ready(self) -> bool:
+        """检查搜索器是否准备就绪"""
+        return self.initialized
+    
+    def get_status(self) -> Dict[str, bool]:
+        """获取各组件的状态"""
+        return {
+            'unified_searcher': self.initialized,
+            'image_searcher': getattr(self.image_searcher, 'initialized', False),
+            'caption_matcher': getattr(self.caption_matcher, 'initialized', False)
+        }
 
 
 if __name__ == "__main__":
-    main()
+    cli = ImageSearchCLI()
+    cli.run()

@@ -112,152 +112,145 @@ class MedicalRAGSystem:
             self.logger.error(f"检查数据库状态失败: {e}")
             return {"error": str(e)}
     
-    def search_and_generate(
-        self, 
-        query: str, 
-        image_path: Optional[str] = None, # 新增图片路径参数
-        top_k: Optional[int] = None,
-        enable_reranking: bool = True,
-        use_qwen_rerank: bool = True,
-        enable_image_search: bool = True
-    ) -> Dict[str, Any]:
-        """
-        执行检索并生成答案
+    def _get_full_image_path(self, image_path_suffix: str) -> str:
+        """根据相对路径获取图片的完整绝对路径"""
+        image_base_path_rel = self.config.get('image_search', {}).get('image_base_path', 'data/processed/image')
+        image_base_path_abs = os.path.join(self.project_root, image_base_path_rel)
+        return os.path.normpath(os.path.join(image_base_path_abs, image_path_suffix))
+
+    def _perform_image_to_image_search(self, image_path: str, top_k: int) -> List[RetrievalResult]:
+        """执行以图搜图"""
+        if not (image_path and self.image_searcher):
+            return []
+
+        self.logger.info(f"开始以图搜图, 图片路径: {image_path}")
+        raw_results = self.image_searcher.search_by_image(image_path, top_n=top_k)
         
-        Args:
-            query: 用户查询
-            top_k: 文本检索结果数量
-            enable_reranking: 是否启用重排序
-            use_qwen_rerank: 是否使用Qwen重排序
-            enable_image_search: 是否启用图像检索
-            
-        Returns:
-            包含检索结果和生成答案的字典
-        """
-        try:
-            if not self.search_engine:
-                if not self.initialize_components():
-                    return {"error": "系统组件初始化失败"}
-            
-            # 如果未提供top_k，则从配置中获取
-            if top_k is None:
-                top_k = self.config.get('retriever', {}).get('top_k', 5)
+        if not (raw_results and raw_results.get('ids') and raw_results['ids'][0]):
+            return []
 
-            # --- 阶段1: 混合文本检索 ---
-            text_results = self.search_engine.hybrid_search(
-                query, 
-                top_k, 
-                enable_reranking=enable_reranking,
-                use_qwen_rerank=use_qwen_rerank
-            )
+        results = []
+        for i in range(len(raw_results['ids'][0])):
+            meta = raw_results['metadatas'][0][i]
+            image_path_suffix = meta.get('image_path')
+            full_image_path = self._get_full_image_path(image_path_suffix)
             
-            # --- 阶段2: 以图搜图 (如果提供了图片) ---
-            image_to_image_results: List[RetrievalResult] = []
-            if image_path and self.image_searcher:
-                self.logger.info(f"开始以图搜图, 图片路径: {image_path}")
-                raw_image_results = self.image_searcher.search_by_image(image_path, top_n=top_k)
+            results.append(RetrievalResult(
+                doc_id=image_path_suffix,
+                content=f"图片描述: {raw_results['documents'][0][i]}\n图片路径: {full_image_path}",
+                score=1 - raw_results['distances'][0][i],
+                retrieval_type='image_to_image',
+                metadata=meta
+            ))
+        self.logger.info(f"以图搜图完成, 找到 {len(results)} 张相似图片。")
+        return results
 
-                if raw_image_results and raw_image_results.get('ids') and raw_image_results['ids'][0]:
-                    image_base_path_rel = self.config.get('image_search', {}).get('image_base_path', 'data/processed/image')
-                    image_base_path_abs = os.path.join(self.project_root, image_base_path_rel)
-                    
-                    for i in range(len(raw_image_results['ids'][0])):
-                        meta = raw_image_results['metadatas'][0][i]
-                        image_path_suffix = meta.get('image_path')
-                        full_image_path = os.path.normpath(os.path.join(image_base_path_abs, image_path_suffix))
-                        
-                        image_to_image_results.append(RetrievalResult(
-                            doc_id=image_path_suffix,
-                            content=f"图片描述: {raw_image_results['documents'][0][i]}\n图片路径: {full_image_path}",
-                            score=1 - raw_image_results['distances'][0][i],
-                            retrieval_type='image_to_image',
-                            metadata=meta
-                        ))
-                    self.logger.info(f"以图搜图完成, 找到 {len(image_to_image_results)} 张相似图片。")
+    def _perform_text_to_image_search(self, text_results: List[RetrievalResult]) -> List[RetrievalResult]:
+        """从文本结果中提取标题并搜索关联图片"""
+        if not (self.image_searcher and self.image_searcher.initialized):
+            return []
 
-            # --- 阶段3: 从文本中提取描述并关联图像 ---
-            image_from_text_results: List[RetrievalResult] = []
-            found_image_paths = set() # 用于避免重复添加相同的图片
-            if enable_image_search and self.image_searcher and self.image_searcher.initialized:
-                self.logger.info("开始从检索到的文本中关联图像...")
-                # 预编译正则表达式以提取图片标题
-                caption_pattern = re.compile(r"(图\d+-\d+\s+[\w\s（）(),]+)")
+        self.logger.info("开始从检索到的文本中关联图像...")
+        caption_pattern = re.compile(r"(图\d+-\d+\s+[\w\s（）(),]+)")
+        found_image_paths = set()
+        image_results = []
+
+        for text_result in text_results:
+            captions = caption_pattern.findall(text_result.content)
+            for caption in captions:
+                caption = caption.strip()
+                self.logger.info(f"从文本块中提取到图片标题进行搜索: '{caption}'")
                 
-                for text_result in text_results:
-                    # 从文本内容中查找所有匹配的图片标题
-                    captions = caption_pattern.findall(text_result.content)
-                    if not captions:
-                        continue
+                raw_img_result = self.image_searcher.search_by_text(caption, top_n=1)
+                
+                if not (raw_img_result and raw_img_result.get('ids') and raw_img_result['ids'][0]):
+                    continue
 
-                    for caption in captions:
-                        caption = caption.strip()
-                        self.logger.info(f"从文本块中提取到图片标题进行搜索: '{caption}'")
-                        
-                        # 使用提取到的标题精确搜索图片，只取最相关的那一张
-                        raw_image_results = self.image_searcher.search_by_text(caption, top_n=1)
-                        
-                        # 如果找到了图片，则处理并添加到结果列表
-                        if raw_image_results and raw_image_results.get('ids') and raw_image_results['ids'][0]:
-                            image_base_path_rel = self.config.get('image_search', {}).get('image_base_path', 'data/processed/image')
-                            image_base_path_abs = os.path.join(self.project_root, image_base_path_rel)
-                            meta = raw_image_results['metadatas'][0][0]
-                            image_path_suffix = meta['image_path']
+                meta = raw_img_result['metadatas'][0][0]
+                image_path_suffix = meta['image_path']
 
-                            # 如果该图片尚未添加，则进行处理
-                            if image_path_suffix not in found_image_paths:
-                                found_image_paths.add(image_path_suffix)
-                                full_image_path = os.path.normpath(os.path.join(image_base_path_abs, image_path_suffix))
-                                
-                                # 将图像检索结果包装成统一的 RetrievalResult 格式
-                                image_from_text_results.append(RetrievalResult(
-                                    doc_id=image_path_suffix,
-                                    content=f"图片描述: {raw_image_results['documents'][0][0]}\n图片路径: {full_image_path}",
-                                    score=1 - raw_image_results['distances'][0][0], # 使用本次精确搜索的分数
-                                    retrieval_type='image_from_text', # 新的检索类型，方便调试
-                                    metadata=meta
-                                ))
-                                self.logger.info(f"成功找到关联图片: {full_image_path}")
-                                # 新增：以更易读的格式打印图片的详细元数据
-                                self.logger.info(f"图片详细元数据:\n{json.dumps(meta, ensure_ascii=False, indent=2)}")
+                if image_path_suffix not in found_image_paths:
+                    found_image_paths.add(image_path_suffix)
+                    full_image_path = self._get_full_image_path(image_path_suffix)
+                    
+                    image_results.append(RetrievalResult(
+                        doc_id=image_path_suffix,
+                        content=f"图片描述: {raw_img_result['documents'][0][0]}\n图片路径: {full_image_path}",
+                        score=1 - raw_img_result['distances'][0][0],
+                        retrieval_type='image_from_text',
+                        metadata=meta
+                    ))
+                    self.logger.info(f"成功找到关联图片: {full_image_path}")
+                    self.logger.info(f"图片详细元数据:\n{json.dumps(meta, ensure_ascii=False, indent=2)}")
+        return image_results
 
-            # 4. 合并所有结果 (不过滤图片间的重复，以便在UI上分开展示)
-            all_results = sorted(
-                text_results + image_to_image_results + image_from_text_results,
-                key=lambda x: x.score, 
-                reverse=True
-            )
-            
-            # 5. 生成答案 (增加独立的错误处理)
-            try:
-                answer = self.answer_generator.generate_answer(query, all_results, image_path)
-            except Exception as e:
-                self.logger.error(f"生成答案失败: {e}", exc_info=True)
-                answer = f"生成答案失败: {e}"
-            
-            # 6. 构建返回结果
-            result_dict = {
-                "query": query,
-                "answer": answer,
-                "timestamp": datetime.now().isoformat(),
-                "total_results": len(all_results),
-                "retrieval": {}
-            }
-            
-            # 添加检索结果详情
-            for i, result in enumerate(all_results):
-                result_dict["retrieval"][f"doc_{i+1}"] = {
+    def _build_final_response(self, query: str, answer: str, all_results: List[RetrievalResult]) -> Dict[str, Any]:
+        """构建最终的API响应字典"""
+        result_dict = {
+            "query": query,
+            "answer": answer,
+            "timestamp": datetime.now().isoformat(),
+            "total_results": len(all_results),
+            "retrieval": {
+                f"doc_{i+1}": {
                     "doc_id": result.doc_id,
                     "content": result.content,
                     "score": result.score,
                     "retrieval_type": result.retrieval_type,
                     "metadata": result.metadata
                 }
+                for i, result in enumerate(all_results)
+            }
+        }
+        return result_dict
+
+    def search_and_generate(
+        self, 
+        query: str, 
+        image_path: Optional[str] = None,
+        top_k: Optional[int] = None,
+        enable_reranking: bool = True,
+        use_qwen_rerank: bool = True,
+        enable_image_search: bool = True
+    ) -> Dict[str, Any]:
+        """
+        执行检索并生成答案的核心流程
+        """
+        try:
+            if not self.search_engine and not self.initialize_components():
+                return {"error": "系统组件初始化失败"}
             
-            return result_dict
+            top_k = top_k or self.config.get('retriever', {}).get('top_k', 5)
+
+            # 1. 文本检索
+            text_results = self.search_engine.hybrid_search(
+                query, top_k, enable_reranking=enable_reranking, use_qwen_rerank=use_qwen_rerank
+            )
+            
+            # 2. 图像检索
+            image_to_image_results = self._perform_image_to_image_search(image_path, top_k)
+            image_from_text_results = self._perform_text_to_image_search(text_results) if enable_image_search else []
+
+            # 3. 合并并排序所有结果
+            all_results = sorted(
+                text_results + image_to_image_results + image_from_text_results,
+                key=lambda x: x.score, 
+                reverse=True
+            )
+            
+            # 4. 生成答案
+            try:
+                answer = self.answer_generator.generate_answer(query, all_results, image_path)
+            except Exception as e:
+                self.logger.error(f"生成答案失败: {e}", exc_info=True)
+                answer = f"生成答案失败: {e}"
+            
+            # 5. 构建并返回结果
+            return self._build_final_response(query, answer, all_results)
             
         except Exception as e:
-            self.logger.error(f"检索生成失败: {e}", exc_info=True)
-            return {"error": str(e)}
+            self.logger.error(f"检索生成过程发生严重错误: {e}", exc_info=True)
+            return {"error": f"检索生成过程发生严重错误: {e}"}
     
     def process_queries(self, queries: List[str]) -> List[Dict[str, Any]]:
         """
@@ -291,9 +284,9 @@ class MedicalRAGSystem:
             result['processing_time'] = processing_time
             
             if "error" in result:
-                print(f"❌ 处理失败: {result['error']} (耗时: {processing_time:.2f}秒)")
+                print(f"处理失败: {result['error']} (耗时: {processing_time:.2f}秒)")
             else:
-                print(f"✓ 完成，检索到 {result['total_results']} 个相关文档 (耗时: {processing_time:.2f}秒)")
+                print(f"完成，检索到 {result['total_results']} 个相关文档 (耗时: {processing_time:.2f}秒)")
                 
             results.append(result)
             self.current_session_results.append(result)
@@ -370,9 +363,9 @@ class MedicalRAGSystem:
                     print(f"数据库状态: {json.dumps(db_info, indent=2, ensure_ascii=False)}")
                     continue
                 
-                # 新增: 询问图片路径
                 image_path = input("请输入查询图片的路径 (可选,直接回车跳过): ").strip()
                 if image_path and not os.path.exists(image_path):
+                    self.logger.warning(f"提供的图片路径不存在: {image_path}")
                     print("警告: 图片路径不存在，将只进行文本搜索。")
                     image_path = None
 
@@ -380,18 +373,20 @@ class MedicalRAGSystem:
                 result = self.search_and_generate(query, image_path=image_path)
                 
                 if "error" in result:
-                    print(f"❌ 处理失败: {result['error']}")
+                    print(f"处理失败: {result['error']}")
                 else:
-                    print(f"\n📝 答案: {result['answer']}")
-                    print(f"📊 检索到 {result['total_results']} 个相关文档")
+                    print(f"\n答案: {result['answer']}")
+                    print(f"检索到 {result['total_results']} 个相关文档")
                     
-                    # 显示前3个检索结果
-                    if result['total_results'] > 0:
-                        print("\n📋 主要检索结果:")
+                    if result.get('total_results', 0) > 0:
+                        print("\n主要检索结果:")
+                        retrieval_data = result.get('retrieval', {})
                         for i in range(min(3, result['total_results'])):
-                            doc_info = result['retrieval'][f'doc_{i+1}']
-                            print(f"  {i+1}. 评分: {doc_info['score']:.3f}")
-                            print(f"     内容: {doc_info['content'][:100]}...")
+                            doc_key = f'doc_{i+1}'
+                            if doc_key in retrieval_data:
+                                doc_info = retrieval_data[doc_key]
+                                print(f"  {i+1}. 类型: {doc_info.get('retrieval_type', 'N/A')}, 评分: {doc_info.get('score', 0):.3f}")
+                                print(f"     内容: {doc_info.get('content', '')[:100]}...")
                     
                     self.current_session_results.append(result)
                 
@@ -405,26 +400,29 @@ class MedicalRAGSystem:
         if self.current_session_results:
             self.save_results()
     
+    def _parse_queries_from_file(self, file_path: str) -> List[Dict[str, Any]]:
+        """从JSON文件中解析查询"""
+        queries_data = []
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict) and 'question' in item:
+                    queries_data.append(item)
+                elif isinstance(item, str):
+                    queries_data.append({'question': item})
+        elif isinstance(data, dict) and 'questions' in data:
+            for q in data['questions']:
+                queries_data.append({'question': q})
+        
+        return queries_data
+
     def run_with_file(self, file_path: str):
         """从文件读取查询并处理"""
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # 提取查询和原始数据
-            queries = []
-            original_data = []
-            if isinstance(data, list):
-                for item in data:
-                    if isinstance(item, dict) and 'question' in item:
-                        queries.append(item['question'])
-                        original_data.append(item)
-                    elif isinstance(item, str):
-                        queries.append(item)
-                        original_data.append({'question': item})
-            elif isinstance(data, dict) and 'questions' in data:
-                queries = data['questions']
-                original_data = [{'question': q} for q in queries]
+            original_data = self._parse_queries_from_file(file_path)
+            queries = [item['question'] for item in original_data]
             
             if not queries:
                 print("文件中没有找到有效的查询问题")
@@ -432,10 +430,8 @@ class MedicalRAGSystem:
             
             print(f"从文件中读取到 {len(queries)} 个问题")
             
-            # 处理查询
             results = self.process_queries(queries)
             
-            # 合并原始数据和生成结果
             final_results = []
             for i, (original, result) in enumerate(zip(original_data, results)):
                 if "error" not in result:
@@ -459,68 +455,59 @@ class MedicalRAGSystem:
                     }
                 final_results.append(final_result)
             
-            # 保存结果
             self.save_results(final_results)
             
         except Exception as e:
+            self.logger.error(f"从文件处理查询失败: {e}", exc_info=True)
             print(f"从文件处理查询失败: {e}")
-            self.logger.error(f"从文件处理查询失败: {e}")
 
 
 def main():
-    """主函数"""
+    """主函数，用于启动和管理RAG系统"""
     print("=== 医疗RAG系统 ===")
-    
-    # 初始化系统
     rag_system = MedicalRAGSystem()
-    
-    # 询问是否重建索引
-    rebuild_choice = input("\n是否需要重建索引? (y/n): ").lower().strip()
-    if rebuild_choice == 'y':
+
+    # 1. 重建索引（可选）
+    if input("\n是否需要重建索引? (y/n): ").lower().strip() == 'y':
         print("\n正在重建索引...")
         if rag_system.rebuild_index():
-            print("✓ 索引重建成功")
+            print("索引重建成功")
         else:
-            print("❌ 索引重建失败，但可以尝试使用现有索引")
-    
-    # 检查数据库状态
+            print("索引重建失败，程序将继续尝试使用现有索引。")
+
+    # 2. 检查数据库状态
     print("\n检查数据库状态...")
     db_info = rag_system.check_database_status()
-    
     if "error" in db_info:
-        print(f"❌ 数据库检查失败: {db_info['error']}")
+        print(f"数据库检查失败: {db_info['error']}")
         return
     
-    print(f"✓ 数据库状态正常")
-    print(f"  集合名称: {db_info.get('collection_name', 'N/A')}")
-    print(f"  文档数量: {db_info.get('document_count', 'N/A')}")
-    
+    print(f"  数据库状态正常，集合 '{db_info.get('collection_name', 'N/A')}' 中有 {db_info.get('document_count', 'N/A')} 个文档。")
     if db_info.get('document_count', 0) == 0:
-        print("警告: 数据库中没有文档，建议重建索引")
-    
-    # 选择运行模式
+        print("警告: 数据库为空，建议重建索引。")
+
+    # 3. 选择运行模式
+    menu = {
+        '1': ('交互式模式', rag_system.interactive_mode),
+        '2': ('文件模式', lambda: rag_system.run_with_file(input("请输入查询文件路径: ").strip())),
+        '3': ('使用默认测试问题', lambda: rag_system.run_with_file("./data/truth_query.json"))
+    }
     print("\n请选择运行模式:")
-    print("1. 交互式模式 (手动输入查询)")
-    print("2. 文件模式 (从文件读取查询)")
-    print("3. 使用默认测试问题")
-    
-    choice = input("请选择 (1-3): ").strip()
-    
-    if choice == '1':
-        rag_system.interactive_mode()
-    elif choice == '2':
-        file_path = input("请输入查询文件路径: ").strip()
-        if os.path.exists(file_path):
-            rag_system.run_with_file(file_path)
+    for key, (desc, _) in menu.items():
+        print(f"{key}. {desc}")
+
+    choice = input("请选择: ").strip()
+    action = menu.get(choice)
+
+    if action:
+        if choice in ['2', '3']:
+            file_path = "./data/truth_query.json" if choice == '3' else input("请输入查询文件路径: ").strip()
+            if os.path.exists(file_path):
+                action[1]()
+            else:
+                print(f"文件不存在: {file_path}")
         else:
-            print("文件不存在")
-    elif choice == '3':
-        # 使用默认测试问题
-        truth_query_path = "./data/truth_query.json"
-        if os.path.exists(truth_query_path):
-            rag_system.run_with_file(truth_query_path)
-        else:
-            print("默认测试文件不存在")
+            action[1]()
     else:
         print("无效选择")
 
