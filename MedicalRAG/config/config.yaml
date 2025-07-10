@@ -1,56 +1,74 @@
-# 文档处理相关
-document:
-  input_dir: "./data/processed"  # 输入 markdown 文档路径
-  vectorstore_path: "./data/book_vectorstore"  # 向量数据库存储路径
-  collection_name: "medical_rag_custom"  # ChromaDB 集合名称
-  # collection_name: "02_Standard_section_qwen"  # ChromaDB 集合名称
-  # collection_name: "all_Guide_knowledge_base"  # ChromaDB 集合名称
-  # model_name: "Qwen/Qwen-3B-Embedding
-  # model_dir: "./models/Qwen3-Embedding-0.6B"
-  # model_dir: "./models/bge-small-zh-v1.5"  # 嵌入模型本地路径
-# ChromaDB 配置
-chroma:
-  db_path: "./data/book_vectorstore"  # ChromaDB存储路径
-  distance_metric: "cosine"  # 距离度量方式：cosine, l2, ip
+# 索引创建的总配置
+indexing:
+  # 文档索引配置
+  document:
+    input_dir: "data/processed"
+    nodes_file: "data/processed/nodes.jsonl" # 解析后节点文件的输出路径
+    vectorstore_path: "data/book_vectorstore"
+    collection_name: "medical_rag_custom"
+  # 图片索引配置
+  image:
+    nodes_file: "data/processed/image/image_nodes.jsonl"
+    base_path: "data/processed/image"
+    vectorstore_path: "data/image_vectorstore_clip_taiyi"
+    collection_name: "image_features_clip_vit"
+    model_path: "models/clip-vit-large-patch14"
+    batch_size: 32
+
 # Embedding 模型配置
 embedding:
   provider: "bge_zh_local_embedding" # 通过此名称在下方的 embedding_providers 中查找模型
 
 # 重排序配置
 rerank:
-  enabled: false  # 是否启用重排序
-  model_path: "./models/Qwen3-Reranker-0.6B"
+  enabled: true  # 是否启用重排序
+  
+  # 重排序器类型: "model_based" (使用本地Cross-Encoder) 或 "llm_based" (使用大语言模型)
+  type: "llm_based" 
+
+  # --- model_based reranker config (当 type 为 "model_based") ---
+  model_path: "models/Qwen3-Reranker-0.6B"
+  top_n: 3 # Reranker返回的结果数
   device: "cpu"  # 或 "cuda"
   batch_size: 1
+
+  # --- llm_based reranker config (当 type 为 "llm_based") ---
+  # 在 llm_providers 中定义的LLM provider名称
+  llm_provider: "xiaohumini_llm_api" 
+  # "basic", "advanced", "explanation", "medical", "auto"
+  prompt_type: "auto" 
+
 # 检索器配置
 retriever:
-  top_k: 3  # 检索返回的文档数量
+  top_k: 5  # 检索返回的文档数量
   similarity_threshold: 0.5  # 相似度阈值
 
-# 检索答案生成配置
+# 答案生成配置
 generator:
-# # xiaohumini
-#   api_url: "https://xiaohumini.site/v1"
-#   api_key: "sk-wvCLuRHyTbcJtsb4tNmLckcrESx3CMQw7ufwuIUBrNMNoDD2"
-# do
-  # chat_model: "gpt-4"
-  max_tokens: 1024
-  temperature: 0.6
-  model_name: "gpt-4o"
-  embedding_model_name: "text-embedding-3-small"  # 嵌入模型名称
-  max_context_length: 10000 # 最大上下文长度
+  llm_provider: "xiaohumini_llm_api" # 用于生成答案的LLM
+  # llm_provider: "medical_vllm_api" # 用于生成答案的LLM
+  # llm_provider: "qwen_vl_api" # 用于生成答案的LLM
+  # 动态上下文长度控制参数
+  context_control:
+    model_max_len: 10240
+    image_token_cost: 2500
+    prompt_overhead_cost: 1500
+    answer_cost: 1000
+    chars_per_token: 1.8
+  # 答案后处理
+  postprocessor:
+    max_length: 200 # 答案最大长度
+  # 图像处理
+  image_processing:
+    max_images: 3 # 最多加载的图片数量
 
 # 评估输入文件路径
 evaluator:
-  input_eval_file: "./results/retrival/query_results_20250704_164234.json"  # 输入评估文件路径
+  input_eval_file: "results/retrival/medical_rag_results_20250708_151646.json"
+
 # 提示工程配置
 prompt_engineer:
-  language: "zh"  # 提示语言（zh 或 en）
-
-# 答案后处理配置
-postprocessor:
-  max_length: 200  # 答案最大长度
-
+  language: "zh"
 
 # 大语言模型提供者配置
 llm_providers:
@@ -59,21 +77,35 @@ llm_providers:
     params:
       model_name: "DolphinUltrasound"
       api_url: "http://180.76.114.40/auth/s-r4bd4d7991d7/8000/v1"
+      endpoint_path: "" # 使用自定义端点路径，设置为空字符串表示api_url已是完整路径
       api_key: "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNzbSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NTA0MTI2MDksImlzcyI6ImFpaGMiLCJzdWIiOiJzLXI0YmQ0ZDc5OTFkNy1leHRlcm5hbCJ9.gX-l-qCWSHQbiY5OT0JaHztcXedDCSc-uNLKBgF83l5s9HK3ma2H7y60aBvk-UJDjCLDyG-tVRSNvvofwPIce1CA0JY54fPuhrmUKcat8ZGnvJ1Ggx7xd5T2OnC74Al3PE4jLVwr5bDxgshRB_fprPld0BFN0sHo77_YEmszaRNtoGdjKYk53WuFCoi9NUdHpmQwfZy5tILSkxQs_06mGIEYSsNfPkCJSN2WUQCVzopKI1nP8Wl69kkhIFcaIwPRaNNdD5WPGJQyEg4U1L2ArXfeKM4Sa7rhjs5LwQSLs6a_K3hpueRERylGCn-6nLzPNBMS_BJ_1vzEpMi6lyoneg"
-      max_tokens: 1024
+      max_tokens: 2048
       temperature: 0.6
       is_vision_model: true #标记是否是视觉模型
+      timeout: 180 # 请求超时时间（秒）
 
   xiaohumini_llm_api:
     type: api
     params:
-      model_name: "gpt-4o"
+      # model_name: "gpt-4o"
+      model_name: "qwen-vl-plus"
       # embedding_model_name: "text-embedding-3-small"
-      api_url: "https://xiaohumini.site/v1"
+      api_url: "https://xiaohumini.site/v1" # 修正：恢复为基础URL，让代码自动拼接/chat/completions
       api_key: "sk-wvCLuRHyTbcJtsb4tNmLckcrESx3CMQw7ufwuIUBrNMNoDD2"
       max_tokens: 1024
       temperature: 0.6
-
+      is_vision_model: true # 明确 gpt-4o 是一个视觉模型
+      timeout: 180 # 请求超时时间（秒）
+  qwen_vl_api:
+    type: api
+    params:
+      model_name: "Qwen25-VL-72B-Instruct"
+      api_url: "https://one-api.s.metames.cn:38443/v1"
+      api_key: "sk-NOwyBUae2bveENbN6d00D57612D349498057Df84CbAeA158"
+      max_tokens: 1024
+      temperature: 0.6
+      is_vision_model: true 
+      timeout: 180 
   local_llm:
     type: local
     params:
@@ -83,7 +115,6 @@ llm_providers:
       do_sample: true
 
 embedding_providers:
-  # 配置一个本地BGE模型
   bge_zh_local_embedding:
     type: local
     params:
@@ -92,7 +123,6 @@ embedding_providers:
       batch_size: 32
       max_length: 512
 
-  # 配置一个通过vLLM或OpenAI标准API部署的模型
   openai_api_embedding:
     type: api
     params:
@@ -101,46 +131,16 @@ embedding_providers:
       model_name: "text-embedding-ada-002"
       batch_size: 128
 
-# 图像检索配置
-image_retrieval:
-  text_embedding_model: "models/bge-small-zh-v1.5"
-  chroma_persist_dir: "data/image_vectorstore_clip_taiyi"
+# 以图搜图功能配置
+image_search:
+  # 用于文本搜索图片标题的配置
+  text_to_image:
+    embedding_model: "models/bge-small-zh-v1.5"
+  # 用于图片搜索图片的配置
+  image_to_image:
+    embedding_model: "models/clip-vit-large-patch14"
+  # 通用配置
+  vectorstore_path: "data/image_vectorstore_clip_taiyi"
   collection_name: "image_features_clip_vit"
   image_base_path: "data/processed/image"
-
-# 多模态配置
-multimodal:
-  embedding_strategy: "text_image_concat"
-  
-#   # 图片处理
-  image_processing:
-    max_size: [512, 512]  # 图片最大尺寸
-    quality: 85  # JPEG质量
-    timeout: 30  # 下载超时时间
-  
-#   # 图片描述模型
-  image_description:
-    model: "gpt-4-vision-preview"  # 或 gpt-4o
-    max_tokens: 500
-    temperature: 0.3
-  
-#   # ChromaDB集合
-  chroma_collection: "multimodal_documents"
-
-# RAG检索配置
-multimodal_retrieval:
-  top_k: 5
-  include_images: true
-  similarity_threshold: 0.3
-
-
-# API 密钥配置
-# vllm_api:
-#   model_name: "DolphinUltrasound"
-#   api_url: "http://180.76.114.40/auth/s-r4bd4d7991d7/8000/v1"
-#   api_key: "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNzbSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NTA0MTI2MDksImlzcyI6ImFpaGMiLCJzdWIiOiJzLXI0YmQ0ZDc5OTFkNy1leHRlcm5hbCJ9.gX-l-qCWSHQbiY5OT0JaHztcXedDCSc-uNLKBgF83l5s9HK3ma2H7y60aBvk-UJDjCLDyG-tVRSNvvofwPIce1CA0JY54fPuhrmUKcat8ZGnvJ1Ggx7xd5T2OnC74Al3PE4jLVwr5bDxgshRB_fprPld0BFN0sHo77_YEmszaRNtoGdjKYk53WuFCoi9NUdHpmQwfZy5tILSkxQs_06mGIEYSsNfPkCJSN2WUQCVzopKI1nP8Wl69kkhIFcaIwPRaNNdD5WPGJQyEg4U1L2ArXfeKM4Sa7rhjs5LwQSLs6a_K3hpueRERylGCn-6nLzPNBMS_BJ_1vzEpMi6lyoneg"
-
-# llm_api:
-#   model_name: "gpt-4o"
-#   api_url: "https://xiaohumini.site/v1"
-#   api_key: "sk-wvCLuRHyTbcJtsb4tNmLckcrESx3CMQw7ufwuIUBrNMNoDD2"
+  top_n: 5

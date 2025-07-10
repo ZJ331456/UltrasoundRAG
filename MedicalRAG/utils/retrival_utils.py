@@ -11,7 +11,7 @@
 import os
 import sys
 import torch
-import chromadb
+from MedicalRAG.config.config import get_document_collection
 import numpy as np
 from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
@@ -188,19 +188,9 @@ class DenseRetriever:
             self.logger.error(f"无法获取嵌入模型 '{provider_name}': {e}")
             raise  # 重新抛出异常
         
-        # 初始化ChromaDB客户端
-        chroma_db_path = self.config['document']['vectorstore_path']
-        os.makedirs(chroma_db_path, exist_ok=True)
-        self.chroma_client = chromadb.PersistentClient(path=chroma_db_path)
-        
-        # 获取Chroma集合
-        try:
-            collection_name = self.config['document']['collection_name']
-            self.chroma_collection = self.chroma_client.get_collection(name=collection_name)
-            self.logger.info(f"成功连接到ChromaDB集合: {collection_name}")
-        except Exception as e:
-            self.logger.error(f"无法连接到ChromaDB集合: {e}")
-            raise
+        # 使用统一的ChromaDB管理器
+        self.chroma_collection = get_document_collection()
+        self.logger.info("成功连接到ChromaDB集合")
     
     def search(self, query: str, top_k: int = 10) -> List[RetrievalResult]:
         """
@@ -328,7 +318,18 @@ class HybridSearchEngine:
             self.logger.error(f"加载文档构建BM25索引失败: {e}")
             # 如果失败，至少确保BM25有一个空的文档列表
             self.bm25_retriever.build_index([])
-    
+
+    def get_database_info(self) -> Dict[str, Any]:
+        """获取数据库基本信息"""
+        try:
+            collection = self.dense_retriever.chroma_collection
+            return {
+                "document_count": collection.count()
+            }
+        except Exception as e:
+            self.logger.error(f"获取数据库信息失败: {e}")
+            return {"error": str(e)}
+
     def dense_search(self, query: str, top_k: int = 10) -> List[RetrievalResult]:
         """执行密集检索"""
         return self.dense_retriever.search(query, top_k)
@@ -393,12 +394,3 @@ class HybridSearchEngine:
         self.logger.info(f"混合检索完成，返回 {len(final_results)} 个结果")
         
         return final_results
-    
-    def get_database_info(self) -> Dict[str, Any]:
-        """获取数据库信息"""
-        collection_count = self.dense_retriever.chroma_collection.count()
-        return {
-            "collection_name": self.config['document']['collection_name'],
-            "document_count": collection_count,
-            "vectorstore_path": self.config['document']['vectorstore_path']
-        }

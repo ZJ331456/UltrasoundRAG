@@ -5,16 +5,22 @@
 主要功能：
 1. 基于规则的重排序（词汇重叠、长度惩罚等）
 2. 基于本地重排序模型（如Qwen3-Reranker-0.6B）的重排序
+3. 基于大语言模型（LLM）的重排序
 """
 
 import os
 import sys
 import torch
+import json
+import re
 from typing import List, Dict, Any, TYPE_CHECKING
 from dataclasses import dataclass
-import re
+
 
 from MedicalRAG.utils.logger import setup_logger
+from MedicalRAG.utils.prompt import get_rerank_prompt
+from MedicalRAG.utils.llm_utils import llm_provider
+
 
 # 避免循环导入，使用TYPE_CHECKING
 if TYPE_CHECKING:
@@ -124,7 +130,7 @@ class ModelBasedReranker:
     
     def __init__(
         self,
-        model_path: str = r"C:\Users\zero\Desktop\ht-rag\models\Qwen3-Reranker-0.6B",
+        model_path: str = "models/Qwen3-Reranker-0.6B",
         device: str = "auto",
         batch_size: int = 1,  # 默认设置为 1 避免 padding 问题
     ):
@@ -249,6 +255,137 @@ class ModelBasedReranker:
             self.logger.error(f"模型重排序失败: {e}")
             return results
 
+
+class LLMBasedReranker:
+    """基于大语言模型的重排序器"""
+    
+    def __init__(
+        self,
+        llm_provider_name: str = 'generator',
+        prompt_type: str = "auto"
+    ):
+        """
+        初始化LLM重排序器
+        
+        Args:
+            llm_provider_name: 在config.yaml中定义的LLM provider名称
+            prompt_type: 使用的提示词类型 ("basic", "advanced", "explanation", "medical", "auto")
+        """
+        self.logger = setup_logger(self.__class__.__name__)
+        self.prompt_type = prompt_type
+        
+        try:
+            self.llm = llm_provider[llm_provider_name]
+            self.logger.info(f"成功加载LLM provider: {llm_provider_name}")
+        except Exception as e:
+            self.logger.error(f"加载LLM provider '{llm_provider_name}' 失败: {e}")
+            self.llm = None
+    
+    def _parse_llm_response(self, response: str, num_candidates: int) -> List[int]:
+        """
+        解析LLM返回的重排序结果。
+        例如，LLM可能返回 "3, 1, 2"
+        """
+        if not response:
+            self.logger.warning("LLM返回的响应为空。")
+            return []
+
+        try:
+            # 移除所有非数字和非逗号的字符
+            cleaned_response = re.sub(r'[^\d,]', '', response.strip())
+            
+            # 如果清理后为空，则认为无效
+            if not cleaned_response:
+                self.logger.warning(f"无法从LLM响应中提取出数字索引。原始响应: '{response}'")
+                return []
+                
+            # 将字符串分割为数字，并转换为从0开始的索引
+            # "1, 2, 3" -> [0, 1, 2]
+            parsed_indices = [int(i.strip()) - 1 for i in cleaned_response.split(',') if i.strip()]
+
+            # 验证解析出的索引是否在有效范围内
+            valid_indices = [i for i in parsed_indices if 0 <= i < num_candidates]
+            
+            if len(valid_indices) != len(parsed_indices):
+                self.logger.warning(f"LLM返回的排序包含无效或越界的索引。原始响应: '{response}', 解析后: {parsed_indices}")
+
+            # 去重，保持LLM给出的顺序
+            seen = set()
+            unique_valid_indices = [i for i in valid_indices if not (i in seen or seen.add(i))]
+
+            self.logger.info(f"收到LLM响应: {response.strip()}, 解析为有效索引: {unique_valid_indices}")
+            
+            # 新的智能合并逻辑
+            # 如果LLM返回了部分排序，则将未包含的项追加到末尾
+            if 0 < len(unique_valid_indices) < num_candidates:
+                self.logger.info("LLM返回了部分排序结果，将剩余项追加到末尾。")
+                
+                # 找出所有原始索引
+                all_original_indices = set(range(num_candidates))
+                
+                # 找出LLM返回的索引
+                ranked_indices_set = set(unique_valid_indices)
+                
+                # 找出未被LLM排序的索引
+                unranked_indices = sorted(list(all_original_indices - ranked_indices_set))
+                
+                # 合并列表
+                final_order = unique_valid_indices + unranked_indices
+                self.logger.info(f"最终合并排序: {final_order}")
+                return final_order
+
+            # 如果LLM返回的排序是完整的（不多不少），直接使用
+            if len(unique_valid_indices) == num_candidates:
+                 return unique_valid_indices
+
+            # 如果LLM返回的排序完全无效或为空，则返回空列表，由调用者处理
+            self.logger.warning(f"LLM返回的排序索引无效。Response: '{response}', Parsed: {unique_valid_indices}")
+            return []
+
+        except Exception as e:
+            self.logger.error(f"解析LLM响应时发生未知错误: {e}. 原始响应: '{response}'")
+            return []
+
+    def rerank(self, query: str, results: List['RetrievalResult']) -> List['RetrievalResult']:
+        """使用LLM重排序"""
+        if not results or self.llm is None:
+            self.logger.warning("LLM重排序器未初始化或没有结果需要重排序")
+            return results
+        
+        num_results = len(results)
+        prompt = get_rerank_prompt(query, results, self.prompt_type)
+        
+        try:
+            self.logger.info("向LLM发送重排序请求...")
+            llm_response = self.llm.generate(prompt)
+            self.logger.info(f"收到LLM响应: {llm_response}")
+            
+            # 解析响应
+            new_order_indices = self._parse_llm_response(llm_response, num_results)
+            
+            if not new_order_indices:
+                self.logger.warning("无法从LLM响应中解析出有效的排序，返回原始顺序")
+                return results
+
+            # 根据新顺序创建结果列表
+            reranked_results = [results[i] for i in new_order_indices]
+            
+            # 更新分数和元数据
+            for i, result in enumerate(reranked_results):
+                result.metadata['original_score'] = result.score
+                # 分数可以基于新的位置来设定，比如一个递减的分数
+                new_score = float(num_results - i) / num_results
+                result.score = new_score
+                result.metadata['llm_rerank_score'] = new_score
+            
+            self.logger.info(f"LLM重排序完成，处理了 {num_results} 个结果")
+            return reranked_results
+
+        except Exception as e:
+            self.logger.error(f"LLM重排序过程中发生错误: {e}")
+            return results
+
+
 class ResultProcessor:
     """结果处理器 - 负责合并、归一化和重排序检索结果"""
     
@@ -262,24 +399,40 @@ class ResultProcessor:
         self.logger = setup_logger(__name__)
         self.config = config_dict or {}
         
-        # 初始化千问重排序模型（如果配置了）
-        self.qwen_reranker = None
-        if self.config.get('rerank', {}).get('enabled', False):
+        # 初始化重排序器
+        self.reranker = None
+        rerank_config = self.config.get('rerank', {})
+        if rerank_config.get('enabled', False):
+            reranker_type = rerank_config.get('type', 'model_based') # 默认为模型重排序
+            
             try:
-                rerank_config = self.config.get('rerank', {})
-                model_path = rerank_config.get('model_path', r"C:\Users\zero\Desktop\ht-rag\models\Qwen3-Reranker-0.6B")
-                device = rerank_config.get('device', 'auto')
-                batch_size = rerank_config.get('batch_size', 1)
+                if reranker_type == 'model_based':
+                    model_path = rerank_config.get('model_path', r"C:\Users\zero\Desktop\ht-rag\models\Qwen3-Reranker-0.6B")
+                    device = rerank_config.get('device', 'auto')
+                    batch_size = rerank_config.get('batch_size', 1)
+                    
+                    self.reranker = ModelBasedReranker(
+                        model_path=model_path,
+                        device=device,
+                        batch_size=batch_size
+                    )
+                    self.logger.info("模型重排序器(ModelBasedReranker)初始化成功")
+
+                elif reranker_type == 'llm_based':
+                    llm_provider_name = rerank_config.get('llm_provider', 'generator')
+                    prompt_type = rerank_config.get('prompt_type', 'auto')
+                    self.reranker = LLMBasedReranker(
+                        llm_provider_name=llm_provider_name,
+                        prompt_type=prompt_type
+                    )
+                    self.logger.info("LLM重排序器(LLMBasedReranker)初始化成功")
                 
-                self.qwen_reranker = ModelBasedReranker(
-                    model_path=model_path,
-                    device=device,
-                    batch_size=batch_size
-                )
-                self.logger.info("千问重排序模型初始化成功")
+                else:
+                    self.logger.warning(f"未知的重排序器类型: {reranker_type}")
+
             except Exception as e:
-                self.logger.warning(f"千问重排序模型初始化失败: {e}")
-    
+                self.logger.warning(f"初始化重排序器 '{reranker_type}' 失败: {e}")
+
     def combine_results(
         self, 
         dense_results: List['RetrievalResult'],
@@ -354,34 +507,37 @@ class ResultProcessor:
         return results
     
     def qwen_rerank_results(self, query: str, results: List['RetrievalResult']) -> List['RetrievalResult']:
-        """使用千问重排序模型重新排序结果"""
-        if not self.qwen_reranker or not results:
+        """
+        使用重排序模型重新排序结果
+        此方法现在是一个代理，具体实现由 self.reranker 决定
+        """
+        if not self.reranker or not results:
             return results
         
         try:
             # 直接使用原始结果，不需要类型转换
-            reranked = self.qwen_reranker.rerank(query, results)
+            reranked = self.reranker.rerank(query, results)
             
-            self.logger.info(f"千问重排序完成，处理了{len(results)}个结果")
+            self.logger.info(f"重排序完成，处理了{len(results)}个结果")
             return reranked
             
         except Exception as e:
-            self.logger.error(f"千问重排序失败: {e}")
+            self.logger.error(f"重排序失败: {e}")
             return results
     
     def rerank_results(self, query: str, results: List['RetrievalResult'], use_qwen: bool = True) -> List['RetrievalResult']:
         """
-        重排序结果（优先使用千问重排序，回退到简单重排序）
+        重排序结果（优先使用配置的重排序器，回退到规则重排序）
         
         Args:
             query: 原始查询
             results: 待重排序的结果
-            use_qwen: 是否使用千问重排序
+            use_qwen: 是否使用配置的重排序器 (参数名保留兼容性，但现在代表所有高级重排序)
             
         Returns:
             重排序后的结果
         """
-        if use_qwen and self.qwen_reranker:
+        if use_qwen and self.reranker:
             return self.qwen_rerank_results(query, results)
         else:
             # 使用规则重排序作为备选

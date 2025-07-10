@@ -12,14 +12,12 @@
 import os
 from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, StorageContext
 from llama_index.vector_stores.chroma import ChromaVectorStore
-from llama_index.core.node_parser import MarkdownNodeParser
-import chromadb
+from MedicalRAG.config.config import get_document_collection
 import torch
 
 from MedicalRAG.config.config import config
+from MedicalRAG.utils.embedding_utils import LocalEmbedding
 from MedicalRAG.utils.logger import setup_logger
-from MedicalRAG.utils.embedding_utils import embedding_provider, EmbeddingError
-
 def load_and_index_documents():
     """
     加载文档并创建向量索引
@@ -29,12 +27,22 @@ def load_and_index_documents():
     """
     logger = setup_logger(__name__)
     
-    # 获取配置参数
-    input_dir = config['document']['input_dir']
-    collection_name = config['document']['collection_name']
-    chroma_db_path = config['document']['vectorstore_path']
-    # model_dir = config['embedding']['model_name']
+    # --- 从配置结构获取参数 ---
+    doc_config = config['indexing']['document']
+    embedding_provider_name = config['embedding']['provider']
+    embedding_config = config['embedding_providers'][embedding_provider_name]
+
+    input_dir = doc_config['input_dir']
+    collection_name = doc_config['collection_name']
+    chroma_db_path = doc_config['vectorstore_path']
     
+    # 确保嵌入模型提供者是 'local' 类型
+    if embedding_config.get('type') != 'local':
+        raise ValueError(f"文档索引仅支持 'local' 类型的嵌入模型, 但配置的是 '{embedding_config.get('type')}'")
+    model_dir = embedding_config.get('params', {}).get('model_name')
+    if not model_dir:
+         raise ValueError(f"在配置中找不到 '{embedding_provider_name}' 的 model_name")
+
     logger.info(f"开始加载文档并创建索引...")
     logger.info(f"输入目录: {input_dir}")
     logger.info(f"向量数据库路径: {chroma_db_path}")
@@ -44,13 +52,11 @@ def load_and_index_documents():
     os.makedirs(chroma_db_path, exist_ok=True)
     
     # 初始化Chroma客户端
-    chroma_client = chromadb.PersistentClient(path=chroma_db_path)
+    # 使用统一的ChromaDB管理器
+    collection = get_document_collection()
     
     # 创建或获取Chroma集合
-    chroma_collection = chroma_client.get_or_create_collection(
-        name=collection_name,
-        metadata={"hnsw:space": "cosine"}
-    )
+    chroma_collection = collection
     
     # 初始化向量存储
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
@@ -69,26 +75,22 @@ def load_and_index_documents():
 
     logger.info(f"成功加载 {len(documents)} 个文档")
 
-    # # 初始化嵌入模型
-    # embed_model = CustomEmbedding(
-    #     model_name=model_dir,
-    #     device="cuda" if torch.cuda.is_available() else "cpu"
-    # )
-    embed_model = embedding_provider['bge_zh_local_embedding']
-    
-    # 初始化Markdown节点解析器，按标题进行分块
-    logger.info("使用 MarkdownNodeParser 按标题进行分块...")
-    parser = MarkdownNodeParser()
-    nodes = parser.get_nodes_from_documents(documents)
-    logger.info(f"文档被分割成 {len(nodes)} 个节点")
+    # 初始化嵌入模型
+    embed_model = LocalEmbedding(
+        model_name=model_dir,
+        device="cuda" if torch.cuda.is_available() else "cpu"
+    )
 
     # 创建向量索引
     logger.info("开始创建向量索引...")
-    # 移除旧注释，因为我们现在有了明确的分块策略
-    index = VectorStoreIndex(
-        nodes, # 使用解析后的节点创建索引
+    # 调用VectorStoreIndex.from_documents建立索引时，不指定具体的分块策略会默认使用SentenceSplitter这个按句子拆分
+    # 目前策略：按句子分割，组合成1024个token,重叠为20个token文本
+    # llama_index里面的文本分割有MarkdownHeaderTextSplitter这个！后续可以尝试一下！
+    
+    index = VectorStoreIndex.from_documents(
+        documents,
         storage_context=storage_context,
-        embed_model=embed_model,
+        embed_model=embed_model
     )
 
     # 持久化存储

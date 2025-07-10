@@ -1,9 +1,13 @@
 # 忽略模型、结果、脚本和特定数据
+temp_uploads/
+related_project/
+rag_project/
 models/
 results/
 scripts/
 data/
 examples/
+docs.zip
 # Python 缓存和临时文件
 *.pyc
 __pycache__/

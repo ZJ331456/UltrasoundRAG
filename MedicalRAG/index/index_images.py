@@ -2,22 +2,27 @@ import sys
 import os
 import json
 from tqdm import tqdm
-import chromadb
+from MedicalRAG.config.config import get_image_collection
 from transformers import CLIPModel, CLIPImageProcessor
 from PIL import Image
 
-# 将项目根目录添加到 a a a sys.path
+# 将项目根目录添加到 sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from MedicalRAG.utils.image_utils import get_image_embedding
+from MedicalRAG.config.config import config_manager
 
 def main():
-    # --- 配置参数 ---
-    IMAGE_MODEL_PATH = "models/clip-vit-large-patch14"
-    IMAGE_NODES_FILE = "data/processed/image/image_nodes.jsonl"
-    IMAGE_BASE_PATH = "data/processed/image"
-    CHROMA_PERSIST_DIR = "data/image_vectorstore_clip_taiyi" # 使用新的DB目录
-    COLLECTION_NAME = "image_features_clip_vit"
+    # --- 从配置加载参数 ---
+    config = config_manager.config
+    image_config = config['indexing']['image']
+    
+    IMAGE_MODEL_PATH = image_config['model_path']
+    IMAGE_NODES_FILE = image_config['nodes_file']
+    IMAGE_BASE_PATH = image_config['base_path']
+    CHROMA_PERSIST_DIR = image_config['vectorstore_path']
+    COLLECTION_NAME = image_config['collection_name']
+    BATCH_SIZE = image_config['batch_size']
 
     print(f"Loading image model from {IMAGE_MODEL_PATH}...")
     try:
@@ -29,16 +34,11 @@ def main():
         return
 
     print("Initializing ChromaDB...")
-    chroma_client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
+    # 使用统一的ChromaDB管理器
+    collection = get_image_collection()
+    print(f"ChromaDB collection loaded/created successfully.")
     
-    # 检查集合是否存在，如果存在则删除重建
-    existing_collections = [col.name for col in chroma_client.list_collections()]
-    if COLLECTION_NAME in existing_collections:
-        print(f"Collection '{COLLECTION_NAME}' already exists. Deleting it.")
-        chroma_client.delete_collection(name=COLLECTION_NAME)
-
-    collection = chroma_client.create_collection(name=COLLECTION_NAME)
-    print(f"ChromaDB collection '{COLLECTION_NAME}' created/reset successfully.")
+    print(f"Current documents in collection: {collection.count()}")
 
     print(f"Reading image nodes from {IMAGE_NODES_FILE}...")
     with open(IMAGE_NODES_FILE, 'r', encoding='utf-8') as f:
@@ -46,9 +46,8 @@ def main():
 
     print(f"Found {len(image_nodes)} images to process.")
 
-    batch_size = 32
-    for i in tqdm(range(0, len(image_nodes), batch_size), desc="Indexing Images"):
-        batch_nodes = image_nodes[i:i+batch_size]
+    for i in tqdm(range(0, len(image_nodes), BATCH_SIZE), desc="Indexing Images"):
+        batch_nodes = image_nodes[i:i+BATCH_SIZE]
         
         embeddings = []
         documents = []
@@ -97,4 +96,4 @@ def main():
     print(f"ChromaDB data is persisted in: {CHROMA_PERSIST_DIR}")
 
 if __name__ == "__main__":
-    main() 
+    main()

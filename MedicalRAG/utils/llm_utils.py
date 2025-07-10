@@ -107,7 +107,8 @@ class APILLM(BaseLLM):
         max_tokens: int = 1024,
         temperature: float = 0.7,
         timeout: int = 30,
-        is_vision_model: bool = False
+        is_vision_model: bool = False,
+        endpoint_path: Optional[str] = None # 新增：允许自定义端点路径
     ):
         """
         初始化API调用器
@@ -120,6 +121,7 @@ class APILLM(BaseLLM):
             temperature: 采样温度
             timeout: 请求超时时间
             is_vision_model: 此API是否为视觉模型
+            endpoint_path: (可选) 自定义的API端点路径, None则默认'/chat/completions'
         """
         super().__init__()
         
@@ -130,6 +132,7 @@ class APILLM(BaseLLM):
         self.temperature = temperature
         self.timeout = timeout
         self.is_vision_model = is_vision_model
+        self.endpoint_path = endpoint_path # 存储自定义端点
         
         if not self.api_url or not self.model_name:
             raise ValueError("APILLM缺少必要的参数: api_url 和 model_name")
@@ -176,57 +179,48 @@ class APILLM(BaseLLM):
                 data[key] = value
         
         try:
+            # 如果未定义endpoint_path，则默认为/chat/completions以实现向后兼容
+            # 如果定义为""(空字符串), 则不拼接任何路径
+            path_to_append = self.endpoint_path if self.endpoint_path is not None else "/chat/completions"
+            request_url = f"{self.api_url}{path_to_append}"
+            self.logger.debug(f"向API发送请求: URL={request_url}")
+
+            # 使用配置的超时时间
             response = requests.post(
-                f"{self.api_url}/chat/completions",
-                headers=headers,
+                request_url, 
+                headers=headers, 
                 json=data,
-                timeout=self.timeout,
-                stream=stream
+                stream=stream,
+                timeout=self.timeout
             )
             response.raise_for_status()  # 如果状态码不是2xx，则抛出HTTPError
-            return response
-        except requests.exceptions.Timeout as e:
-            self.logger.error(f"API请求超时: {self.api_url}")
-            raise APIError(f"API请求超时: {self.api_url}") from e
-        except requests.exceptions.RequestException as e:
-            error_message = f"API请求失败: {e}"
-            # 尝试从响应中获取更详细的错误信息
-            if e.response is not None:
-                try:
-                    error_detail = e.response.json()
-                    error_message += f"\n服务器详细信息: {json.dumps(error_detail, ensure_ascii=False)}"
-                except json.JSONDecodeError:
-                    error_message += f"\n服务器原始响应: {e.response.text}"
             
-            self.logger.error(error_message)
-            raise APIError(error_message) from e
-    
-    def generate(self, prompt: str, images: Optional[List[Image.Image]] = None, **kwargs) -> str:
-        """生成文本"""
-        messages = [{'role': 'user', 'content': prompt}]
-        return self.chat(messages, images=images, **kwargs)
-    
-    def generate_stream(self, prompt: str, images: Optional[List[Image.Image]] = None, **kwargs) -> Generator[str, None, None]:
-        """流式生成文本"""
-        messages = [{'role': 'user', 'content': prompt}]
-        yield from self.chat_stream(messages, images=images, **kwargs)
-    
-    def chat(self, messages: List[Dict[str, str]], images: Optional[List[Image.Image]] = None, **kwargs) -> str:
-        """对话模式"""
-        try:
-            response = self._make_request(messages, images=images, stream=False, **kwargs)
-            result = response.json()
-            
-            if not result.get('choices'):
-                self.logger.error(f"API返回无效数据: {result}")
-                raise APIError(f"API返回无效数据: {result}")
+            # 处理流式和非流式响应
+            if stream:
+                return response
+            else:
+                result = response.json()
+                
+                if not result.get('choices'):
+                    self.logger.error(f"API返回无效数据: {result}")
+                    raise APIError(f"API返回无效数据: {result}")
 
-            return result['choices'][0]['message']['content']
+                return result['choices'][0]['message']['content']
                 
         except (APIError, json.JSONDecodeError) as e:
             self.logger.error(f"对话生成失败: {e}")
             raise GenerationError(f"对话生成失败: {e}") from e
     
+    def chat(self, messages: List[Dict[str, str]], images: Optional[List[Image.Image]] = None, **kwargs) -> str:
+        """对话模式"""
+        try:
+            response = self._make_request(messages, images=images, stream=False, **kwargs)
+            return response # 修复：返回从 _make_request 获取的响应
+            
+        except (APIError, GenerationError) as e:
+            self.logger.error(f"对话生成失败: {e}")
+            raise GenerationError(f"对话生成失败: {e}") from e
+
     def chat_stream(self, messages: List[Dict[str, str]], images: Optional[List[Image.Image]] = None, **kwargs) -> Generator[str, None, None]:
         """流式对话模式"""
         try:
@@ -248,10 +242,20 @@ class APILLM(BaseLLM):
                         except json.JSONDecodeError:
                             self.logger.warning(f"无法解析流式数据中的JSON行: {line_text}")
                             continue
-                            
+            
         except APIError as e:
             self.logger.error(f"流式对话生成失败: {e}")
             raise GenerationError(f"流式对话生成失败: {e}") from e
+
+    def generate(self, prompt: str, images: Optional[List[Image.Image]] = None, **kwargs) -> str:
+        """生成文本"""
+        messages = [{'role': 'user', 'content': prompt}]
+        return self.chat(messages, images=images, **kwargs)
+    
+    def generate_stream(self, prompt: str, images: Optional[List[Image.Image]] = None, **kwargs) -> Generator[str, None, None]:
+        """流式生成文本"""
+        messages = [{'role': 'user', 'content': prompt}]
+        yield from self.chat_stream(messages, images=images, **kwargs)
 
 
 class LocalLLM(BaseLLM):

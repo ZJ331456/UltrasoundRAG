@@ -121,11 +121,6 @@ class HybridRetriever:
 
 def main():
     """主函数 - 演示混合检索系统的使用"""
-    # --- 优化点 ---
-    # 此处强制指定使用我们定制化索引流程创建的集合
-    # 这是为了确保检索系统能利用图文块优化后的高质量数据
-    # config['document']['collection_name'] = "medical_rag_custom"
-    
     # 初始化检索器
     retriever = HybridRetriever()
 
@@ -137,7 +132,7 @@ def main():
     print(f"存储路径: {db_info['vectorstore_path']}")
     
     if db_info['document_count'] == 0:
-        print("警告: 数据库中没有文档，请先运行 document_loader_bge.py 创建索引")
+        print("警告: 数据库中没有文档，请先运行 document_loader.py 创建索引")
         return
 
     # 读取测试问题
@@ -160,12 +155,13 @@ def main():
             
         print(f"\n[{i}/{len(questions)}] 处理问题: {query}")
         
-        # 执行检索和答案生成
+        # --- 从配置中获取参数 ---
+        top_k = retriever.config.get('retriever', {}).get('top_k', 5)
+
+        # 执行检索和答案生成, 参数由config控制
         result = retriever.search_and_generate(
             query, 
-            top_k=5,
-            enable_reranking=True,
-            use_qwen_rerank=True
+            top_k=top_k
         )
         
         # 保存结果
@@ -180,4 +176,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main() 
