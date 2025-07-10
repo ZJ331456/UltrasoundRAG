@@ -1,3 +1,16 @@
+"""
+图像检索模块
+
+主要功能:
+本模块提供图像检索的核心功能，支持两种主要的检索方式：
+1.  **以文搜图**: 通过 `CaptionImageMatcher` 类，根据文本描述在图像标题中进行语义搜索。
+2.  **以图搜图**: 通过 `ImageSearcher` 类，根据输入的图像在向量数据库中查找相似的图像。
+
+核心组件:
+-   `ImageSearcher`: 负责处理图像到图像的相似性搜索。
+-   `CaptionImageMatcher`: 负责处理文本到图像的语义匹配。
+-   `main()`: 提供一个命令行界面，用于测试和演示上述两种搜索功能。
+"""
 import sys
 import os
 from MedicalRAG.config.config import get_image_collection
