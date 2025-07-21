@@ -25,7 +25,7 @@ from MedicalRAG.config.config import config, config_manager
 from MedicalRAG.utils.logger import setup_logger
 from MedicalRAG.utils.retrival_utils import HybridSearchEngine, RetrievalResult
 from MedicalRAG.utils.answer_generator import AnswerGenerator
-from MedicalRAG.index.run_custom_indexer import run_custom_indexer
+from MedicalRAG.index.run_custom_indexer import run_all_indexers
 from MedicalRAG.retrival.query_images import UnifiedImageSearcher
 from MedicalRAG.config.config import get_chroma_client
 
@@ -93,7 +93,7 @@ class MedicalRAGSystem:
         try:
             self.logger.info("开始重建文档索引...")
             # index = load_and_index_documents()
-            index = run_custom_indexer()
+            index = run_all_indexers()
             self.logger.info("文档索引重建完成")
             return True
         except Exception as e:
