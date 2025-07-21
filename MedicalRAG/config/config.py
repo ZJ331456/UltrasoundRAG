@@ -53,6 +53,7 @@ from typing import Optional
 class ConfigManager:
     _instance = None
     _config = None
+    _config_path = None
     
     def __new__(cls):
         if cls._instance is None:
@@ -66,6 +67,7 @@ class ConfigManager:
                 current_dir = os.path.dirname(os.path.abspath(__file__))
                 config_path = os.path.join(current_dir, "config.yaml")
             
+            self._config_path = config_path
             print(f"尝试加载配置文件: {config_path}")
             
             if not os.path.exists(config_path):
@@ -75,6 +77,13 @@ class ConfigManager:
                 self._config = yaml.safe_load(file)
                 print("配置文件加载成功")
         return self._config
+
+    @property
+    def config_path(self):
+        """获取配置文件路径"""
+        if self._config_path is None:
+            self.load_config()
+        return self._config_path
     
     @property
     def config(self):

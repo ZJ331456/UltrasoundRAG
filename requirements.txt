@@ -40,3 +40,7 @@ altair
 
 # 数据处理和展示
 pandas
+
+# 模型加载相关
+pytorch-lightning
+open_clip_torch

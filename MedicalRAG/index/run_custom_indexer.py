@@ -7,6 +7,8 @@ extracting image-text blocks and indexing them into a ChromaDB vector store.
 
 import os
 import glob
+import time
+import subprocess
 from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from MedicalRAG.config.config import get_image_collection, get_document_collection
@@ -14,7 +16,7 @@ import torch
 import json
 import hashlib
 from tqdm import tqdm
-from transformers import CLIPModel, CLIPImageProcessor
+from MedicalRAG.utils.image_utils import load_clip_model
 from llama_index.core import SimpleDirectoryReader
 
 from MedicalRAG.config.config import config
@@ -22,6 +24,60 @@ from MedicalRAG.utils.logger import setup_logger
 from MedicalRAG.utils.custom_document_parser import get_markdown_parser
 from MedicalRAG.utils.embedding_utils import embedding_provider, EmbeddingError
 from MedicalRAG.utils.image_utils import get_image_embedding
+
+
+def force_remove_directory(path, logger, max_retries=3):
+    """
+    强制删除目录，处理文件被占用的情况
+    """
+    import shutil
+    
+    if not os.path.exists(path):
+        return True
+    
+    for attempt in range(max_retries):
+        try:
+            # 尝试正常删除
+            shutil.rmtree(path)
+            logger.info(f"成功删除目录: {path}")
+            return True
+        except PermissionError as e:
+            if "另一个程序正在使用此文件" in str(e) or "being used by another process" in str(e):
+                logger.warning(f"目录被占用，尝试强制删除 (尝试 {attempt + 1}/{max_retries}): {path}")
+                
+                # 尝试终止可能占用文件的进程
+                try:
+                    # 查找占用ChromaDB文件的进程
+                    result = subprocess.run(
+                        ['powershell', '-Command', f'Get-Process | Where-Object {{$_.Path -like "*streamlit*" -or $_.ProcessName -eq "python"}} | Select-Object Id, ProcessName, Path'],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if result.stdout:
+                        logger.info(f"发现可能占用文件的进程:\n{result.stdout}")
+                except Exception as proc_e:
+                    logger.warning(f"无法查询进程信息: {proc_e}")
+                
+                # 等待一段时间后重试
+                time.sleep(2)
+                
+                # 最后一次尝试：使用Windows的rmdir命令强制删除
+                if attempt == max_retries - 1:
+                    try:
+                        subprocess.run(['rmdir', '/s', '/q', path], shell=True, check=True)
+                        logger.info(f"使用系统命令强制删除成功: {path}")
+                        return True
+                    except subprocess.CalledProcessError as cmd_e:
+                        logger.error(f"系统命令删除失败: {cmd_e}")
+            else:
+                logger.error(f"删除目录失败: {e}")
+                return False
+        except Exception as e:
+            logger.error(f"删除目录时发生未知错误: {e}")
+            if attempt == max_retries - 1:
+                return False
+            time.sleep(1)
+    
+    return False
 
 
 def run_image_indexer(logger):
@@ -42,9 +98,13 @@ def run_image_indexer(logger):
 
     logger.info(f"Loading image model from {IMAGE_MODEL_PATH}...")
     try:
-        # 加载图像处理模型和处理器
-        image_model = CLIPModel.from_pretrained(IMAGE_MODEL_PATH)
-        image_processor = CLIPImageProcessor.from_pretrained(IMAGE_MODEL_PATH)
+        # 使用新的FetalCLIP模型加载器
+        # 需要从配置中获取config_path
+        config_path = image_config.get('config_path', 'E:\\Dolphin\\ht-rag\\models\\fetal-clip\\config.json')
+        image_model, image_processor = load_clip_model(IMAGE_MODEL_PATH, config_path)
+        if image_model is None:
+            logger.error("Failed to load FetalCLIP model")
+            return
     except Exception as e:
         logger.error(f"Error loading image model: {e}")
         return
@@ -54,12 +114,6 @@ def run_image_indexer(logger):
     # 使用统一的ChromaDB管理器
     collection = get_image_collection()
     logger.info(f"ChromaDB image collection loaded/created successfully.")
-    
-    # 在重建索引时，清空旧的图片集合
-    if collection.count() > 0:
-        logger.info(f"Clearing existing data from image collection '{COLLECTION_NAME}'...")
-        collection.delete(where={}) # 删除所有文档
-        logger.info(f"Image collection cleared. Current count: {collection.count()}")
 
     logger.info(f"Reading image nodes from {IMAGE_NODES_FILE}...")
     if not os.path.exists(IMAGE_NODES_FILE):
@@ -145,13 +199,34 @@ def run_custom_indexer():
     collection_name = doc_config['collection_name']
     chroma_db_path = doc_config['vectorstore_path']
     
+    # Get image configuration for cleaning image vectorstore
+    image_config = config['indexing']['image']
+    image_chroma_path = image_config['vectorstore_path']
+    
     logger.info("Starting custom document indexing...")
     logger.info(f"Input directory: {input_dir}")
     logger.info(f"Vector store path: {chroma_db_path}")
     logger.info(f"Collection name: {collection_name}")
     
+    # 完全删除旧的向量数据库文件夹以避免重复内容
+    logger.info("开始清理旧的向量数据库文件夹...")
+    
+    # 使用强制删除函数处理文件被占用的情况
+    doc_delete_success = force_remove_directory(chroma_db_path, logger)
+    if not doc_delete_success:
+        logger.error(f"无法删除文档向量数据库文件夹: {chroma_db_path}")
+        raise RuntimeError(f"无法删除文档向量数据库文件夹，请手动关闭占用该文件的程序后重试")
+    
+    image_delete_success = force_remove_directory(image_chroma_path, logger)
+    if not image_delete_success:
+        logger.error(f"无法删除图像向量数据库文件夹: {image_chroma_path}")
+        raise RuntimeError(f"无法删除图像向量数据库文件夹，请手动关闭占用该文件的程序后重试")
+    
+    logger.info("向量数据库文件夹清理完成")
+    
     # Ensure directories exist
     os.makedirs(chroma_db_path, exist_ok=True)
+    os.makedirs(image_chroma_path, exist_ok=True)
     
     # 使用统一的ChromaDB管理器
     chroma_collection = get_document_collection()

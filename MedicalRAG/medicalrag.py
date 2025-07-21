@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 import re
 
-from MedicalRAG.config.config import config
+from MedicalRAG.config.config import config, config_manager
 from MedicalRAG.utils.logger import setup_logger
 from MedicalRAG.utils.retrival_utils import HybridSearchEngine, RetrievalResult
 from MedicalRAG.utils.answer_generator import AnswerGenerator
@@ -74,6 +74,7 @@ class MedicalRAGSystem:
                 # 初始化统一的图像搜索器
                 self.image_searcher = UnifiedImageSearcher(
                     image_model_path=image_config['image_to_image']['embedding_model'],
+                    config_path=image_config['image_to_image']['config_path'],
                     text_embedding_model_path=image_config['text_to_image']['embedding_model']
                 )
 
@@ -145,8 +146,8 @@ class MedicalRAGSystem:
         self.logger.info(f"以图搜图完成, 找到 {len(results)} 张相似图片。")
         return results
 
-    def _perform_text_to_image_search(self, text_results: List[RetrievalResult]) -> List[RetrievalResult]:
-        """从文本结果中提取标题并搜索关联图片"""
+    def _perform_text_to_image_caption_search(self, text_results: List[RetrievalResult]) -> List[RetrievalResult]:
+        """从文本结果中提取标题并通过图片标题搜索关联图片"""
         if not (self.image_searcher and self.image_searcher.initialized):
             return []
 
@@ -161,7 +162,7 @@ class MedicalRAGSystem:
                 caption = caption.strip()
                 self.logger.info(f"从文本块中提取到图片标题进行搜索: '{caption}'")
                 
-                raw_img_result = self.image_searcher.search_by_text(caption, top_n=1)
+                raw_img_result = self.image_searcher.search_by_text_caption(caption, top_n=1)
                 
                 if not (raw_img_result and raw_img_result.get('ids') and raw_img_result['ids'][0]):
                     continue
@@ -183,6 +184,51 @@ class MedicalRAGSystem:
                     self.logger.info(f"成功找到关联图片: {full_image_path}")
                     self.logger.info(f"图片详细元数据:\n{json.dumps(meta, ensure_ascii=False, indent=2)}")
         return image_results
+
+    def _perform_text_to_image_clip_search(self, query: str, top_k: int) -> List[RetrievalResult]:
+        """使用CLIP模型直接根据查询文本检索图像内容"""
+        if not (self.image_searcher and self.image_searcher.initialized):
+            self.logger.warning("图像搜索器未初始化，无法执行CLIP文本检索")
+            return []
+
+        # 检查CLIP文本搜索器的状态
+        status = self.image_searcher.get_status()
+        self.logger.info(f"图像搜索器状态: {status}")
+        
+        if not status.get('clip_text_searcher', False):
+            self.logger.warning("CLIP文本搜索器未正确初始化，无法执行CLIP文本检索")
+            return []
+
+        self.logger.info(f"开始使用CLIP模型检索图像内容: {query}")
+        
+        try:
+            raw_results = self.image_searcher.search_by_text_clip(query, top_n=top_k)
+            self.logger.info(f"CLIP搜索原始结果: {raw_results}")
+            
+            if not (raw_results and raw_results.get('ids') and raw_results['ids'][0]):
+                self.logger.warning("CLIP文本检索未返回有效结果")
+                return []
+
+            results = []
+            for i in range(len(raw_results['ids'][0])):
+                meta = raw_results['metadatas'][0][i]
+                image_path_suffix = meta.get('image_path')
+                full_image_path = self._get_full_image_path(image_path_suffix)
+                
+                results.append(RetrievalResult(
+                    doc_id=image_path_suffix,
+                    content=f"图片描述: {raw_results['documents'][0][i]}\n图片路径: {full_image_path}",
+                    score=1 - raw_results['distances'][0][i],
+                    retrieval_type='clip_text_to_image',
+                    metadata=meta
+                ))
+            
+            self.logger.info(f"CLIP文本检索完成，找到 {len(results)} 张相关图片。")
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"CLIP文本检索失败: {e}", exc_info=True)
+            return []
 
     def _build_final_response(self, query: str, answer: str, all_results: List[RetrievalResult]) -> Dict[str, Any]:
         """构建最终的API响应字典"""
@@ -211,7 +257,8 @@ class MedicalRAGSystem:
         top_k: Optional[int] = None,
         enable_reranking: bool = True,
         use_qwen_rerank: bool = True,
-        enable_image_search: bool = True
+        enable_image_search: bool = True,
+        enable_clip_text_search: bool = True
     ) -> Dict[str, Any]:
         """
         执行检索并生成答案的核心流程
@@ -220,7 +267,7 @@ class MedicalRAGSystem:
             if not self.search_engine and not self.initialize_components():
                 return {"error": "系统组件初始化失败"}
             
-            top_k = top_k or self.config.get('retriever', {}).get('top_k', 5)
+            top_k = top_k or self.config.get('retriever', {}).get('top_k', 10)
 
             # 1. 文本检索
             text_results = self.search_engine.hybrid_search(
@@ -229,11 +276,12 @@ class MedicalRAGSystem:
             
             # 2. 图像检索
             image_to_image_results = self._perform_image_to_image_search(image_path, top_k)
-            image_from_text_results = self._perform_text_to_image_search(text_results) if enable_image_search else []
+            image_from_text_caption_results = self._perform_text_to_image_caption_search(text_results) if enable_image_search else []
+            clip_text_to_image_results = self._perform_text_to_image_clip_search(query, top_k) if enable_clip_text_search else []
 
             # 3. 合并并排序所有结果
             all_results = sorted(
-                text_results + image_to_image_results + image_from_text_results,
+                text_results + image_to_image_results + image_from_text_caption_results + clip_text_to_image_results,
                 key=lambda x: x.score, 
                 reverse=True
             )

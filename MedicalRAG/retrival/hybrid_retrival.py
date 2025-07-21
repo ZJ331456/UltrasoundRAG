@@ -160,7 +160,7 @@ def main():
         print(f"\n[{i}/{len(questions)}] 处理问题: {query}")
         
         # --- 从配置中获取参数 ---
-        top_k = retriever.config.get('retriever', {}).get('top_k', 5)
+        top_k = retriever.config.get('retriever', {}).get('top_k', 10)
 
         # 执行检索和答案生成, 参数由config控制
         result = retriever.search_and_generate(

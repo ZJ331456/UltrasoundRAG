@@ -31,7 +31,7 @@ def load_rag_system():
 
 def main():
     st.set_page_config(page_title="Medical RAG System", layout="wide")
-    st.title("多模态医疗RAG问答系统")
+    st.title("Ultrasound RAG Q&A -Demo")
     
     # 加载系统
     rag_system = load_rag_system()
@@ -95,6 +95,7 @@ def main():
                 text_results = []
                 image_from_text_results = []
                 image_to_image_results = []
+                clip_text_to_image_results = []
 
                 retrieval_data = result.get('retrieval', {})
                 for key, doc in retrieval_data.items():
@@ -103,6 +104,8 @@ def main():
                         image_from_text_results.append(doc)
                     elif retrieval_type == 'image_to_image':
                         image_to_image_results.append(doc)
+                    elif retrieval_type == 'clip_text_to_image':
+                        clip_text_to_image_results.append(doc)
                     else: # 'dense', 'sparse', etc.
                         text_results.append(doc)
                 
@@ -133,7 +136,25 @@ def main():
                             except Exception as e:
                                 col.error(f"显示图片时出错: {e}")
 
-                # 3. 与上传图片相似的图片
+                # 3. CLIP文本检索到的图片
+                if clip_text_to_image_results:
+                    with st.expander(f"🔍 CLIP文本检索到的图片 ({len(clip_text_to_image_results)}张)", expanded=True):
+                        cols = st.columns(3)
+                        for i, doc in enumerate(clip_text_to_image_results):
+                            col = cols[i % 3]
+                            try:
+                                image_path_line = [line for line in doc['content'].split('\n') if "图片路径:" in line]
+                                if image_path_line:
+                                    full_path = image_path_line[0].replace("图片路径: ", "").strip()
+                                    if os.path.exists(full_path):
+                                        col.image(full_path, caption=f"相关度: {doc['score']:.3f}", use_container_width=True)
+                                        col.caption(doc['metadata'].get('full_caption', ''))
+                                    else:
+                                        col.warning(f"图片未找到:\n{full_path}")
+                            except Exception as e:
+                                col.error(f"显示图片时出错: {e}")
+
+                # 4. 与上传图片相似的图片
                 if image_to_image_results:
                     with st.expander(f"🖼️ 与您上传图片相似的图片 ({len(image_to_image_results)}张)", expanded=True):
                         cols = st.columns(3)
@@ -155,4 +176,4 @@ def main():
         st.warning("请输入问题！")
 
 if __name__ == "__main__":
-    main() 
+    main()

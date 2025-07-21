@@ -1,6 +1,38 @@
 from PIL import Image
 import torch
-from transformers import BertForSequenceClassification, BertTokenizer, CLIPModel, CLIPProcessor, CLIPImageProcessor
+from transformers import CLIPProcessor
+import logging
+import os
+from MedicalRAG.model import FetalCLIPModel
+
+logger = logging.getLogger(__name__)
+
+def load_clip_model(checkpoint_path: str, config_path: str):
+    """
+    加载FetalCLIP模型。
+
+    Args:
+        checkpoint_path (str): 模型权重文件的路径。
+        config_path (str): 模型配置文件路径。
+
+    Returns:
+        tuple: (FetalCLIPModel, image_processor) 或 (None, None) 如果加载失败。
+    """
+    logger.info(f"开始加载CLIP模型: {checkpoint_path}")
+    try:
+        # 使用新的FetalCLIPModel加载模型
+        fetal_clip_model = FetalCLIPModel(
+            model_path=checkpoint_path,
+            config_path=config_path
+        )
+        
+        # 返回模型和图像处理器
+        logger.info("CLIP模型加载成功。")
+        return fetal_clip_model, fetal_clip_model.image_processor
+    except Exception as e:
+        logger.error(f"加载模型失败: {checkpoint_path}. 错误: {e}", exc_info=True)
+        return None, None
+
 
 def get_image_embedding(image_path, image_model, image_processor):
     """
@@ -11,25 +43,38 @@ def get_image_embedding(image_path, image_model, image_processor):
         if image.mode != 'RGB':
             image = image.convert("RGB")
             
-        inputs = image_processor(images=image, return_tensors="pt")
+        # 使用图像处理器预处理图像
+        processed_image = image_processor(image).unsqueeze(0)  # 添加batch维度
+        
         with torch.no_grad():
-            image_features = image_model.get_image_features(**inputs)
-            # 归一化
-            image_features = image_features / image_features.norm(dim=1, keepdim=True)
+            # 使用FetalCLIPModel的encode_image方法
+            image_features = image_model.encode_image(processed_image)
+            
         return image_features.cpu().numpy()
     except Exception as e:
         print(f"Error processing image {image_path}: {e}")
         return None
 
-def get_text_embedding(text, text_model, processor):
+def get_text_embedding(text, text_model, tokenizer=None):
     """
     获取文本的向量, 使用与CLIP模型匹配的方法
     """
-    # 使用 processor 对文本进行分词和预处理
-    inputs = processor(text=text, return_tensors="pt", padding=True, truncation=True)
-    with torch.no_grad():
-        # 调用 get_text_features 来提取与图像向量空间对齐的文本特征
-        text_features = text_model.get_text_features(**inputs)
-        # 归一化
-        text_features = text_features / text_features.norm(dim=1, keepdim=True)
-    return text_features.cpu().numpy() 
+    try:
+        # 如果没有提供tokenizer，使用模型自带的tokenizer
+        if tokenizer is None:
+            tokenizer = text_model.tokenizer
+        
+        # 使用tokenizer对文本进行分词
+        if isinstance(text, str):
+            text = [text]  # 转换为列表格式
+        
+        text_tokens = tokenizer(text)
+        
+        with torch.no_grad():
+            # 使用FetalCLIPModel的encode_text方法
+            text_features = text_model.encode_text(text_tokens)
+            
+        return text_features.cpu().numpy()
+    except Exception as e:
+        print(f"Error processing text: {e}")
+        return None

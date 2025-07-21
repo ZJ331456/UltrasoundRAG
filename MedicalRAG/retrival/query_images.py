@@ -1,14 +1,16 @@
 """图像检索模块
 
 主要功能:
-本模块提供图像检索的核心功能，支持两种主要的检索方式：
-1. **以文搜图**: 通过文本描述在图像标题中进行语义搜索
-2. **以图搜图**: 通过输入图像在向量数据库中查找相似图像
+本模块提供图像检索的核心功能，支持三种主要的检索方式：
+1. **以文搜图(标题匹配)**: 通过文本描述在图像标题中进行语义搜索
+2. **以文搜图(CLIP内容)**: 通过CLIP模型直接检索图像内容
+3. **以图搜图**: 通过输入图像在向量数据库中查找相似图像
 
 核心组件:
 - `BaseImageSearcher`: 图像搜索基类，提供公共功能
 - `ImageSearcher`: 图像到图像的相似性搜索
-- `CaptionImageMatcher`: 文本到图像的语义匹配
+- `CaptionImageMatcher`: 文本到图像标题的语义匹配
+- `CLIPTextImageSearcher`: 基于CLIP的文本到图像内容检索
 - `UnifiedImageSearcher`: 统一的图像搜索接口
 """
 import os
@@ -19,6 +21,7 @@ from abc import ABC, abstractmethod
 import chromadb
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
+import torch
 from PIL import Image
 from sentence_transformers import SentenceTransformer
 from transformers import CLIPModel, CLIPImageProcessor
@@ -29,7 +32,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from MedicalRAG.config.config import get_image_collection, config_manager
 from MedicalRAG.utils.logger import setup_logger
-from MedicalRAG.utils.image_utils import get_image_embedding
+from MedicalRAG.utils.image_utils import get_image_embedding, load_clip_model
 
 
 def find_chinese_font() -> Optional[str]:
@@ -78,9 +81,10 @@ class BaseImageSearcher(ABC):
 class ImageSearcher(BaseImageSearcher):
     """图像到图像的相似性搜索器"""
     
-    def __init__(self, image_model_path: str, chroma_persist_dir: str = None, collection_name: str = None):
+    def __init__(self, image_model_path: str, config_path: str, chroma_persist_dir: str = None, collection_name: str = None):
         super().__init__()
         self.image_model_path = image_model_path
+        self.config_path = config_path
         self.image_model = None
         self.image_processor = None
         self.collection = None
@@ -95,9 +99,9 @@ class ImageSearcher(BaseImageSearcher):
     
     def _load_models(self) -> None:
         """加载图像模型"""
-        self.logger.info(f"正在加载图像模型: {self.image_model_path}")
-        self.image_model = CLIPModel.from_pretrained(self.image_model_path)
-        self.image_processor = CLIPImageProcessor.from_pretrained(self.image_model_path)
+        self.image_model, self.image_processor = load_clip_model(self.image_model_path, self.config_path)
+        if not self.image_model:
+            raise RuntimeError(f"无法加载模型: {self.image_model_path}")
     
     def _connect_to_db(self) -> None:
         """连接到数据库"""
@@ -105,11 +109,11 @@ class ImageSearcher(BaseImageSearcher):
         self.collection = get_image_collection()
         self.logger.info("成功连接到图像集合")
     
-    def search(self, image_path: str, top_n: int = 5) -> Optional[Dict[str, Any]]:
+    def search(self, image_path: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
         """根据图像路径搜索相似图像"""
         return self.search_by_image(image_path, top_n)
     
-    def search_by_image(self, image_path: str, top_n: int = 5) -> Optional[Dict[str, Any]]:
+    def search_by_image(self, image_path: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
         """根据给定的图片路径，在索引中搜索最相似的图片"""
         if not self.initialized:
             self.logger.warning("ImageSearcher 未正确初始化")
@@ -216,7 +220,7 @@ class CaptionImageMatcher(BaseImageSearcher):
         self.logger.info("图片标题索引构建成功")
         self.initialized = True
     
-    def search(self, query_text: str, top_n: int = 5) -> Optional[Dict[str, Any]]:
+    def search(self, query_text: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
         """根据文本查询搜索相关图像"""
         if not self.initialized or not self.caption_collection:
             self.logger.warning("CaptionImageMatcher 未成功初始化，无法执行搜索")
@@ -236,6 +240,80 @@ class CaptionImageMatcher(BaseImageSearcher):
         except Exception as e:
             self._handle_error("文本搜索图像", e)
             return None
+
+
+class CLIPTextImageSearcher(BaseImageSearcher):
+    """基于CLIP的文本到图像内容检索器"""
+    
+    def __init__(self, image_model_path: str, config_path: str, chroma_persist_dir: str = None, collection_name: str = None):
+        super().__init__()
+        self.image_model_path = image_model_path
+        self.config_path = config_path
+        self.clip_model = None
+        self.clip_processor = None
+        self.collection = None
+        
+        try:
+            self._load_clip_model()
+            self._connect_to_db()
+            self.initialized = True
+            self.logger.info("CLIPTextImageSearcher 初始化成功")
+        except Exception as e:
+            self._handle_error("CLIPTextImageSearcher 初始化", e)
+    
+    def _load_clip_model(self) -> None:
+        """加载CLIP模型"""
+        self.logger.info(f"正在加载FetalCLIP模型: {self.image_model_path}")
+        from ..model.fetal_clip_model import load_fetal_clip_model
+        self.clip_model = load_fetal_clip_model(self.image_model_path, self.config_path)
+        if not self.clip_model:
+            raise RuntimeError(f"无法加载FetalCLIP模型: {self.image_model_path}")
+        self.logger.info("FetalCLIP模型加载成功")
+    
+    def _connect_to_db(self) -> None:
+        """连接到数据库"""
+        self.logger.info("正在连接到 ChromaDB 图像集合")
+        self.collection = get_image_collection()
+        self.logger.info("成功连接到图像集合")
+    
+    def search(self, query_text: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
+        """根据文本查询直接检索图像内容"""
+        return self.search_by_clip_text(query_text, top_n)
+    
+    def search_by_clip_text(self, query_text: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
+        """使用CLIP模型根据文本直接检索图像内容"""
+        if not self.initialized:
+            self.logger.warning("CLIPTextImageSearcher 未正确初始化")
+            return None
+        
+        try:
+            self.logger.info(f"正在使用FetalCLIP编码查询文本: {query_text}")
+            
+            # 使用FetalCLIP模型编码文本
+            import torch
+            
+            # 使用FetalCLIP的tokenizer对文本进行分词
+            text_tokens = self.clip_model.tokenize_text([query_text])
+            
+            # 使用FetalCLIP模型编码文本
+            text_features = self.clip_model.encode_text(text_tokens)
+            
+            # 转换为列表格式用于ChromaDB查询
+            query_embedding = text_features.squeeze().cpu().numpy().tolist()
+            
+            self.logger.info("正在数据库中搜索相似图像")
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=top_n
+            )
+            
+            self.logger.info(f"CLIP文本搜索完成，找到 {len(results.get('ids', [[]])[0])} 个结果")
+            return results
+            
+        except Exception as e:
+            self._handle_error("CLIP文本搜索图像", e)
+            return None
+
 
 class ImageDisplayer:
     """图像结果显示器"""
@@ -307,7 +385,8 @@ class ImageSearchCLI:
         # 从配置加载参数
         self.text_model_path = self.config.get('text_to_image', {}).get('embedding_model')
         self.image_model_path = self.config.get('image_to_image', {}).get('embedding_model')
-        self.default_top_n = self.config.get('top_n', 5)
+        self.image_config_path = self.config.get('image_to_image', {}).get('config_path')
+        self.default_top_n = self.config.get('top_n', 10)
     
     def run(self) -> None:
         """运行交互式搜索界面"""
@@ -319,11 +398,13 @@ class ImageSearchCLI:
                 if mode == 'exit':
                     break
                 elif mode == '1':
-                    self._text_search_mode()
+                    self._text_caption_search_mode()
                 elif mode == '2':
+                    self._text_clip_search_mode()
+                elif mode == '3':
                     self._image_search_mode()
                 else:
-                    print("无效的选项，请输入 1, 2, 或 'exit'")
+                    print("无效的选项，请输入 1, 2, 3, 或 'exit'")
             except KeyboardInterrupt:
                 print("\n\n程序被用户中断")
                 break
@@ -334,17 +415,18 @@ class ImageSearchCLI:
     def _get_search_mode(self) -> str:
         """获取搜索模式"""
         print("\n--- 请选择搜索模式 ---")
-        print("1. 按文本描述搜索")
-        print("2. 按图片搜索")
-        return input("请输入选项 (1 or 2, 输入 'exit' 退出): ").strip().lower()
+        print("1. 按文本描述搜索图片标题")
+        print("2. 按文本描述搜索图片内容(CLIP)")
+        print("3. 按图片搜索")
+        return input("请输入选项 (1, 2, 3, 输入 'exit' 退出): ").strip().lower()
     
     def _get_top_n(self) -> int:
         """获取返回结果数量"""
         top_n_str = input(f"您希望返回多少个结果? (默认: {self.default_top_n}): ").strip()
         return int(top_n_str) if top_n_str.isdigit() else self.default_top_n
     
-    def _text_search_mode(self) -> None:
-        """文本搜索模式"""
+    def _text_caption_search_mode(self) -> None:
+        """基于图片标题的文本搜索模式"""
         try:
             matcher = CaptionImageMatcher(self.text_model_path)
             if not matcher.initialized:
@@ -366,10 +448,33 @@ class ImageSearchCLI:
             self.logger.error(f"文本搜索失败: {e}", exc_info=True)
             print(f"文本搜索失败: {e}")
     
+    def _text_clip_search_mode(self) -> None:
+        """基于CLIP模型的文本搜索模式"""
+        try:
+            clip_searcher = CLIPTextImageSearcher(self.image_model_path, self.image_config_path)
+            if not clip_searcher.initialized:
+                print("CLIP文本搜索器初始化失败")
+                return
+            
+            query_text = input("\n请输入您想查询的图片内容描述: ").strip()
+            if not query_text:
+                print("查询文本不能为空")
+                return
+            
+            top_n = self._get_top_n()
+            results = clip_searcher.search_by_clip_text(query_text, top_n=top_n)
+            
+            print("\n--- CLIP文本搜索结果 ---")
+            self.displayer.display_results(results)
+            
+        except Exception as e:
+            self.logger.error(f"CLIP文本搜索失败: {e}", exc_info=True)
+            print(f"CLIP文本搜索失败: {e}")
+    
     def _image_search_mode(self) -> None:
         """图片搜索模式"""
         try:
-            searcher = ImageSearcher(self.image_model_path)
+            searcher = ImageSearcher(self.image_model_path, self.image_config_path)
             if not searcher.initialized:
                 print("图像搜索器初始化失败")
                 return
@@ -391,21 +496,23 @@ class ImageSearchCLI:
 
 
 class UnifiedImageSearcher:
-    """统一的图像搜索器，整合了以图搜图和以文搜图功能"""
+    """统一的图像搜索器，整合了以图搜图和多种以文搜图功能"""
     
-    def __init__(self, image_model_path: str, text_embedding_model_path: str):
+    def __init__(self, image_model_path: str, config_path: str, text_embedding_model_path: str):
         self.logger = setup_logger(self.__class__.__name__)
         self.initialized = False
         
         try:
-            # 初始化两个搜索器
-            self.image_searcher = ImageSearcher(image_model_path)
+            # 初始化三个搜索器
+            self.image_searcher = ImageSearcher(image_model_path, config_path)
             self.caption_matcher = CaptionImageMatcher(text_embedding_model_path)
+            self.clip_text_searcher = CLIPTextImageSearcher(image_model_path, config_path)
             
-            # 只有当两个搜索器都初始化成功时，才认为统一搜索器初始化成功
+            # 只有当所有搜索器都初始化成功时，才认为统一搜索器初始化成功
             self.initialized = (
                 self.image_searcher.initialized and 
-                self.caption_matcher.initialized
+                self.caption_matcher.initialized and
+                self.clip_text_searcher.initialized
             )
             
             if self.initialized:
@@ -417,7 +524,7 @@ class UnifiedImageSearcher:
             self.logger.error(f"UnifiedImageSearcher 初始化失败: {e}", exc_info=True)
             self.initialized = False
     
-    def search_by_image(self, image_path: str, top_n: int = 5) -> Optional[Dict[str, Any]]:
+    def search_by_image(self, image_path: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
         """根据图像搜索相似图像"""
         if not self.initialized or not self.image_searcher.initialized:
             self.logger.warning("图像搜索器未正确初始化")
@@ -425,13 +532,26 @@ class UnifiedImageSearcher:
         
         return self.image_searcher.search_by_image(image_path, top_n)
     
-    def search_by_text(self, query_text: str, top_n: int = 5) -> Optional[Dict[str, Any]]:
-        """根据文本搜索相关图像"""
+    def search_by_text_caption(self, query_text: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
+        """根据文本在图像标题中搜索相关图像"""
         if not self.initialized or not self.caption_matcher.initialized:
-            self.logger.warning("文本搜索器未正确初始化")
+            self.logger.warning("文本标题搜索器未正确初始化")
             return None
         
         return self.caption_matcher.search(query_text, top_n)
+    
+    def search_by_text_clip(self, query_text: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
+        """使用CLIP模型根据文本直接检索图像内容"""
+        if not self.initialized or not self.clip_text_searcher.initialized:
+            self.logger.warning("CLIP文本搜索器未正确初始化")
+            return None
+        
+        return self.clip_text_searcher.search_by_clip_text(query_text, top_n)
+    
+    # 保持向后兼容性的方法
+    def search_by_text(self, query_text: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
+        """根据文本搜索相关图像（默认使用标题匹配，保持向后兼容性）"""
+        return self.search_by_text_caption(query_text, top_n)
     
     def is_ready(self) -> bool:
         """检查搜索器是否准备就绪"""
@@ -442,7 +562,8 @@ class UnifiedImageSearcher:
         return {
             'unified_searcher': self.initialized,
             'image_searcher': getattr(self.image_searcher, 'initialized', False),
-            'caption_matcher': getattr(self.caption_matcher, 'initialized', False)
+            'caption_matcher': getattr(self.caption_matcher, 'initialized', False),
+            'clip_text_searcher': getattr(self.clip_text_searcher, 'initialized', False)
         }
 
 
