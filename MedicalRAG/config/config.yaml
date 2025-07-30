@@ -44,6 +44,24 @@ retriever:
   top_k: 10  # 检索返回的文档数量
   similarity_threshold: 0.5  # 相似度阈值
 
+# 以图搜图功能配置
+image_search:
+  # 是否启用图片搜索功能
+  enabled: true
+  # 用于文本搜索图片标题的配置
+  text_to_image:
+    embedding_model: "models/bge-small-zh-v1.5"
+  # 用于图片搜索图片的配置
+  image_to_image:
+    embedding_model: "models/fetal-clip/dataset2-pretrain/final_model.pt"
+    config_path: "models/fetal-clip/config.json"
+    # embedding_model: "models/clip-vit-large-patch14"
+  # 通用配置
+  vectorstore_path: "data/image_vectorstore_clip_taiyi"
+  collection_name: "image_features_clip_vit"
+  image_base_path: "data/processed/image"
+  top_n: 10
+
 # 答案生成配置
 generator:
   llm_provider: "xiaohumini_llm_api" # 用于生成答案的LLM
@@ -132,18 +150,3 @@ embedding_providers:
       model_name: "text-embedding-ada-002"
       batch_size: 128
 
-# 以图搜图功能配置
-image_search:
-  # 用于文本搜索图片标题的配置
-  text_to_image:
-    embedding_model: "models/bge-small-zh-v1.5"
-  # 用于图片搜索图片的配置
-  image_to_image:
-    embedding_model: "models/fetal-clip/dataset2-pretrain/final_model.pt"
-    config_path: "models/fetal-clip/config.json"
-    # embedding_model: "models/clip-vit-large-patch14"
-  # 通用配置
-  vectorstore_path: "data/image_vectorstore_clip_taiyi"
-  collection_name: "image_features_clip_vit"
-  image_base_path: "data/processed/image"
-  top_n: 10

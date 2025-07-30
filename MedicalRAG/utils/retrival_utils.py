@@ -1,25 +1,46 @@
-"""
-检索工具模块
-提供密集检索、稀疏检索和混合检索的核心功能
+"""检索工具模块
+提供文本检索和图像检索的核心功能
 
 主要功能：
+文本检索：
 1. BM25稀疏检索器 - 基于关键词的传统检索
 2. 密集检索器 - 基于语义向量的检索
-3. 检索结果统一数据结构
+3. 混合检索引擎 - 结合密集和稀疏检索
+
+图像检索：
+1. 以图搜图 - 基于图像相似性的检索
+2. 以文搜图(标题匹配) - 通过文本在图像标题中进行语义搜索
+3. 以文搜图(CLIP内容) - 通过CLIP模型直接检索图像内容
+4. 统一图像检索接口 - 整合多种图像检索方式
+
+数据结构：
+- RetrievalResult: 检索结果统一数据结构
 """
 
 import os
 import sys
+import logging
 import torch
-from MedicalRAG.config.config import get_document_collection
+from MedicalRAG.config.config import get_document_collection, get_image_collection, config_manager
 import numpy as np
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 from collections import defaultdict
+from abc import ABC, abstractmethod
+
+# 图像处理相关导入
+import chromadb
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+from PIL import Image
+from sentence_transformers import SentenceTransformer
+from transformers import CLIPModel, CLIPImageProcessor
+from chromadb.config import Settings
 
 from MedicalRAG.config.config import config
 from MedicalRAG.utils.embedding_utils import embedding_provider
 from MedicalRAG.utils.logger import setup_logger
+from MedicalRAG.utils.image_utils import get_image_embedding, load_clip_model
 
 # 尝试导入jieba用于中文分词
 try:
@@ -29,6 +50,23 @@ except ImportError:
     print("警告: jieba 未安装，将使用简单的字符分词")
     jieba = None
 
+
+def find_chinese_font() -> Optional[str]:
+    """找到一个可用的中文字体"""
+    font_paths = fm.findSystemFonts(fontpaths=None, fontext='ttf')
+    font_check_order = ['Microsoft YaHei', 'SimHei', 'KaiTi', 'FangSong', 'Heiti', 'Arial Unicode MS']
+    
+    for font_name_check in font_check_order:
+        for font_path in font_paths:
+            try:
+                font_name = fm.FontProperties(fname=font_path).get_name()
+                if font_name_check in font_name:
+                    return font_path
+            except Exception:
+                continue
+    
+    return None
+
 @dataclass
 class RetrievalResult:
     """检索结果统一数据结构"""
@@ -36,7 +74,34 @@ class RetrievalResult:
     content: str
     metadata: Dict[str, Any]
     score: float
-    retrieval_type: str  # 'dense', 'sparse', 'hybrid'
+    retrieval_type: str  # 'dense', 'sparse', 'hybrid', 'image'
+
+
+class BaseImageSearcher(ABC):
+    """图像搜索基类，提供公共功能"""
+    
+    def __init__(self):
+        self.logger = setup_logger(self.__class__.__name__)
+        self.initialized = False
+        self.config = config_manager.config.get('image_search', {})
+    
+    def _validate_config(self, required_keys: List[str]) -> bool:
+        """验证配置是否包含必需的键"""
+        for key in required_keys:
+            if key not in self.config:
+                self.logger.error(f"配置中缺少必需的键: {key}")
+                return False
+        return True
+    
+    def _handle_error(self, operation: str, error: Exception) -> None:
+        """统一的错误处理"""
+        self.logger.error(f"{operation}失败: {error}", exc_info=True)
+        self.initialized = False
+    
+    @abstractmethod
+    def search(self, *args, **kwargs) -> Optional[Dict[str, Any]]:
+        """抽象搜索方法"""
+        pass
 
 
 class BM25SparseRetriever:
@@ -242,155 +307,367 @@ class DenseRetriever:
             return []
 
 
-class HybridSearchEngine:
-    """混合搜索引擎 - 核心检索逻辑"""
+class ImageSearcher(BaseImageSearcher):
+    """图像到图像的相似性搜索器"""
     
-    def __init__(self, config_dict: Dict[str, Any]):
-        """
-        初始化混合搜索引擎
+    def __init__(self, image_model_path: str, config_path: str, chroma_persist_dir: str = None, collection_name: str = None):
+        super().__init__()
+        self.image_model_path = image_model_path
+        self.config_path = config_path
+        self.image_model = None
+        self.image_processor = None
+        self.collection = None
         
-        Args:
-            config_dict: 配置字典
-        """
-        self.config = config_dict
-        self.logger = setup_logger(__name__)
-        
-        # 初始化检索组件
-        self.dense_retriever = DenseRetriever(self.config)
-        self.bm25_retriever = BM25SparseRetriever()
-        
-        # 为BM25检索器加载文档
-        self._load_documents_for_bm25()
-        
-        self.logger.info("混合搜索引擎初始化完成")
-    
-    def _load_documents_for_bm25(self):
-        """从ChromaDB加载文档并为BM25构建索引"""
         try:
-            # 从ChromaDB获取所有文档
-            collection = self.dense_retriever.chroma_collection
-            
-            # 分批获取所有文档 (ChromaDB的limit限制)
-            batch_size = 1000
-            offset = 0
-            all_documents = []
-            
-            while True:
-                # 获取一批文档
-                results = collection.get(
-                    offset=offset,
-                    limit=batch_size,
-                    include=['documents', 'metadatas']
-                )
-                
-                if not results['documents']:
-                    break
-                
-                # 转换为BM25需要的格式
-                for doc_id, content, metadata in zip(
-                    results['ids'], 
-                    results['documents'], 
-                    results['metadatas']
-                ):
-                    document = {
-                        'id': doc_id,
-                        'content': content,
-                        'metadata': metadata or {}
-                    }
-                    all_documents.append(document)
-                
-                offset += batch_size
-                
-                # 如果返回的文档少于batch_size，说明已经到达末尾
-                if len(results['documents']) < batch_size:
-                    break
-            
-            self.logger.info(f"从ChromaDB加载了 {len(all_documents)} 个文档用于BM25索引")
-            
-            # 为BM25构建索引
-            if all_documents:
-                self.bm25_retriever.build_index(all_documents)
-                self.logger.info("BM25索引构建完成")
-            else:
-                self.logger.warning("没有找到文档来构建BM25索引")
-                
+            self._load_models()
+            self._connect_to_db()
+            self.initialized = True
+            self.logger.info("ImageSearcher 初始化成功")
         except Exception as e:
-            self.logger.error(f"加载文档构建BM25索引失败: {e}")
-            # 如果失败，至少确保BM25有一个空的文档列表
-            self.bm25_retriever.build_index([])
-
-    def get_database_info(self) -> Dict[str, Any]:
-        """获取数据库基本信息"""
+            self._handle_error("ImageSearcher 初始化", e)
+    
+    def _load_models(self) -> None:
+        """加载图像模型"""
+        self.image_model, self.image_processor = load_clip_model(self.image_model_path, self.config_path)
+        if not self.image_model:
+            raise RuntimeError(f"无法加载模型: {self.image_model_path}")
+    
+    def _connect_to_db(self) -> None:
+        """连接到数据库"""
+        self.logger.info("正在连接到 ChromaDB")
+        self.collection = get_image_collection()
+        self.logger.info("成功连接到图像集合")
+    
+    def search(self, image_path: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
+        """根据图像路径搜索相似图像"""
+        return self.search_by_image(image_path, top_n)
+    
+    def search_by_image(self, image_path: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
+        """根据给定的图片路径，在索引中搜索最相似的图片"""
+        if not self.initialized:
+            self.logger.warning("ImageSearcher 未正确初始化")
+            return None
+        
+        if not os.path.exists(image_path):
+            self.logger.error(f"图像文件不存在: {image_path}")
+            return None
+        
         try:
-            collection = self.dense_retriever.chroma_collection
-            return {
-                "document_count": collection.count()
-            }
-        except Exception as e:
-            self.logger.error(f"获取数据库信息失败: {e}")
-            return {"error": str(e)}
-
-    def dense_search(self, query: str, top_k: int = 10) -> List[RetrievalResult]:
-        """执行密集检索"""
-        return self.dense_retriever.search(query, top_k)
-    
-    def sparse_search(self, query: str, top_k: int = 10) -> List[RetrievalResult]:
-        """执行稀疏检索"""
-        return self.bm25_retriever.search(query, top_k)
-    
-    def hybrid_search(
-        self, 
-        query: str, 
-        top_k: int = 10,
-        dense_weight: float = 0.7,
-        sparse_weight: float = 0.3,
-        enable_reranking: bool = True,
-        use_qwen_rerank: bool = True
-    ) -> List[RetrievalResult]:
-        """
-        混合检索 - 核心方法
-        
-        Args:
-            query: 查询文本
-            top_k: 返回结果数量
-            dense_weight: 密集检索权重
-            sparse_weight: 稀疏检索权重
-            enable_reranking: 是否启用重排序
-            use_qwen_rerank: 是否使用千问重排序
+            self.logger.info(f"正在编码查询图像: {image_path}")
+            query_embedding = get_image_embedding(image_path, self.image_model, self.image_processor)
+            if query_embedding is None:
+                return None
             
-        Returns:
-            检索结果列表
-        """
-        self.logger.info(f"开始混合检索: '{query}'")
+            self.logger.info("正在数据库中搜索相似图像")
+            results = self.collection.query(
+                query_embeddings=[query_embedding.flatten().tolist()],
+                n_results=top_n + 1  # 请求 N+1 个结果，以防查询本身被过滤
+            )
+            
+            # 截断结果到指定数量
+            if results and results.get('ids') and len(results['ids'][0]) > top_n:
+                for key in results:
+                    if results[key] and isinstance(results[key], list) and len(results[key]) > 0:
+                        results[key] = [lst[:top_n] for lst in results[key]]
+            
+            return results
+            
+        except Exception as e:
+            self._handle_error("图像搜索", e)
+            return None
+
+
+class CaptionImageMatcher(BaseImageSearcher):
+    """文本到图像的语义匹配搜索器"""
+    
+    def __init__(self, text_embedding_model_path: str, chroma_persist_dir: str = None, collection_name: str = None):
+        super().__init__()
+        self.text_embedding_model_path = text_embedding_model_path
+        self.text_model = None
+        self.caption_collection = None
+        self.captions_with_metadata = []
         
-        # 1. 分别执行密集检索和稀疏检索
-        dense_results = self.dense_search(query, top_k * 2)  # 获取更多候选
-        sparse_results = self.sparse_search(query, top_k * 2)
+        try:
+            self._load_model()
+            self._build_caption_index()
+            self.logger.info("CaptionImageMatcher 初始化成功")
+        except Exception as e:
+            self._handle_error("CaptionImageMatcher 初始化", e)
+    
+    def _load_model(self) -> None:
+        """加载文本嵌入模型"""
+        self.logger.info(f"正在加载文本嵌入模型: {self.text_embedding_model_path}")
+        self.text_model = SentenceTransformer(self.text_embedding_model_path)
+    
+    def _build_caption_index(self) -> None:
+        """构建图片标题索引"""
+        self.logger.info("正在从 ChromaDB 加载图像元数据")
         
-        self.logger.info(f"密集检索返回 {len(dense_results)} 个结果，稀疏检索返回 {len(sparse_results)} 个结果")
+        image_collection = get_image_collection()
+        all_data = image_collection.get(include=["metadatas", "documents"])
         
-        # 2. 合并结果 (需要导入ResultProcessor)
-        from MedicalRAG.utils.rerank_utils import ResultProcessor
-        result_processor = ResultProcessor(self.config)
+        # 提取标题和元数据
+        if all_data and all_data.get('metadatas'):
+            for meta, doc in zip(all_data['metadatas'], all_data['documents']):
+                caption = meta.get('full_caption', doc)
+                image_path = meta.get('image_path')
+                if caption and image_path:
+                    self.captions_with_metadata.append({
+                        'caption': caption,
+                        'image_path': image_path
+                    })
         
-        combined_results = result_processor.combine_results(
-            dense_results, 
-            sparse_results, 
-            dense_weight, 
-            sparse_weight
+        if not self.captions_with_metadata:
+            self.logger.warning("数据库中未找到有效的图片标题或图片路径，文本搜图功能将不可用")
+            self.initialized = False
+            return
+        
+        # 创建内存中的标题索引
+        all_captions = [item['caption'] for item in self.captions_with_metadata]
+        self.logger.info(f"为 {len(all_captions)} 个图片标题创建内存中的语义索引")
+        
+        in_memory_client = chromadb.Client(settings=Settings(anonymized_telemetry=False))
+        self.caption_collection = in_memory_client.create_collection(
+            name="image_captions_temp",
+            metadata={"hnsw:space": "cosine"}
         )
         
-        # 3. 重排序（可选）
-        if enable_reranking and combined_results:
-            self.logger.info("开始重排序...")
-            combined_results = result_processor.rerank_results(
-                query, 
-                combined_results, 
-                use_qwen=use_qwen_rerank
+        # 编码标题并添加到集合
+        caption_embeddings = self.text_model.encode(
+            all_captions, 
+            convert_to_tensor=False, 
+            show_progress_bar=True
+        )
+        
+        self.caption_collection.add(
+            embeddings=caption_embeddings.tolist(),
+            documents=all_captions,
+            metadatas=[{'image_path': item['image_path']} for item in self.captions_with_metadata],
+            ids=[str(i) for i in range(len(all_captions))]
+        )
+        
+        self.logger.info("图片标题索引构建成功")
+        self.initialized = True
+    
+    def search(self, query_text: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
+        """根据文本查询搜索相关图像"""
+        if not self.initialized or not self.caption_collection:
+            self.logger.warning("CaptionImageMatcher 未成功初始化，无法执行搜索")
+            return None
+        
+        try:
+            self.logger.info(f"正在编码查询: {query_text}")
+            query_embedding = self.text_model.encode(query_text, convert_to_tensor=False)
+            
+            self.logger.info("正在搜索相似的图片标题")
+            results = self.caption_collection.query(
+                query_embeddings=[query_embedding.tolist()],
+                n_results=top_n
             )
+            return results
+            
+        except Exception as e:
+            self._handle_error("文本搜索图像", e)
+            return None
+
+
+class CLIPTextImageSearcher(BaseImageSearcher):
+    """基于CLIP的文本到图像内容检索器"""
+    
+    def __init__(self, image_model_path: str, config_path: str, chroma_persist_dir: str = None, collection_name: str = None):
+        super().__init__()
+        self.image_model_path = image_model_path
+        self.config_path = config_path
+        self.clip_model = None
+        self.clip_processor = None
+        self.collection = None
         
-        # 4. 返回top_k结果
-        final_results = combined_results[:top_k]
-        self.logger.info(f"混合检索完成，返回 {len(final_results)} 个结果")
+        try:
+            self._load_clip_model()
+            self._connect_to_db()
+            self.initialized = True
+            self.logger.info("CLIPTextImageSearcher 初始化成功")
+        except Exception as e:
+            self._handle_error("CLIPTextImageSearcher 初始化", e)
+    
+    def _load_clip_model(self) -> None:
+        """加载CLIP模型"""
+        self.logger.info(f"正在加载FetalCLIP模型: {self.image_model_path}")
+        from MedicalRAG.model.fetal_clip_model import load_fetal_clip_model
+        self.clip_model = load_fetal_clip_model(self.image_model_path, self.config_path)
+        if not self.clip_model:
+            raise RuntimeError(f"无法加载FetalCLIP模型: {self.image_model_path}")
+        self.logger.info("FetalCLIP模型加载成功")
+    
+    def _connect_to_db(self) -> None:
+        """连接到数据库"""
+        self.logger.info("正在连接到 ChromaDB 图像集合")
+        self.collection = get_image_collection()
+        self.logger.info("成功连接到图像集合")
+    
+    def search(self, query_text: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
+        """根据文本查询直接检索图像内容"""
+        return self.search_by_clip_text(query_text, top_n)
+    
+    def search_by_clip_text(self, query_text: str, top_n: int = 10) -> Optional[Dict[str, Any]]:
+        """使用CLIP模型根据文本直接检索图像内容"""
+        if not self.initialized:
+            self.logger.warning("CLIPTextImageSearcher 未正确初始化")
+            return None
         
-        return final_results
+        try:
+            self.logger.info(f"正在使用FetalCLIP编码查询文本: {query_text}")
+            
+            # 使用FetalCLIP模型编码文本
+            import torch
+            
+            # 使用FetalCLIP的tokenizer对文本进行分词
+            text_tokens = self.clip_model.tokenize_text([query_text])
+            
+            # 使用FetalCLIP模型编码文本
+            text_features = self.clip_model.encode_text(text_tokens)
+            
+            # 转换为列表格式用于ChromaDB查询
+            query_embedding = text_features.squeeze().cpu().numpy().tolist()
+            
+            self.logger.info("正在数据库中搜索相似图像")
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=top_n
+            )
+            
+            self.logger.info(f"CLIP文本搜索完成，找到 {len(results.get('ids', [[]])[0])} 个结果")
+            return results
+            
+        except Exception as e:
+            self._handle_error("CLIP文本搜索图像", e)
+            return None
+
+
+class ImageDisplayer:
+    """图像搜索结果显示器"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.chinese_font = find_chinese_font()
+        
+        # 设置matplotlib中文字体
+        if self.chinese_font:
+            plt.rcParams['font.sans-serif'] = [self.chinese_font]
+            plt.rcParams['axes.unicode_minus'] = False
+            self.logger.info(f"设置中文字体: {self.chinese_font}")
+        else:
+            self.logger.warning("未找到中文字体，可能无法正确显示中文")
+    
+    def display_results(self, results: Dict[str, Any], search_type: str = "图像搜索") -> None:
+        """显示搜索结果"""
+        if not results or 'ids' not in results:
+            self.logger.warning("没有搜索结果可显示")
+            return
+        
+        ids = results['ids'][0]
+        metadatas = results.get('metadatas', [[]])[0]
+        distances = results.get('distances', [[]])[0]
+        
+        if not ids:
+            self.logger.info("搜索结果为空")
+            return
+        
+        print(f"\n{search_type}结果 (共 {len(ids)} 个):")
+        print("=" * 50)
+        
+        for i, (id_, metadata, distance) in enumerate(zip(ids, metadatas, distances)):
+            self._display_single_result(i + 1, id_, metadata, distance)
+    
+    def _display_single_result(self, index: int, id_: str, metadata: Dict, distance: float) -> None:
+        """显示单个搜索结果"""
+        print(f"\n结果 {index}:")
+        print(f"  ID: {id_}")
+        print(f"  相似度距离: {distance:.4f}")
+        
+        if metadata:
+            for key, value in metadata.items():
+                if key == 'image_path':
+                    print(f"  图片路径: {value}")
+                elif key == 'caption':
+                    print(f"  图片标题: {value}")
+                else:
+                    print(f"  {key}: {value}")
+    
+    def display_images(self, results: Dict[str, Any], max_display: int = 6) -> None:
+        """显示图像搜索结果的图片"""
+        if not results or 'ids' not in results:
+            self.logger.warning("没有搜索结果可显示")
+            return
+        
+        ids = results['ids'][0]
+        metadatas = results.get('metadatas', [[]])[0]
+        distances = results.get('distances', [[]])[0]
+        
+        if not ids:
+            self.logger.info("搜索结果为空")
+            return
+        
+        # 限制显示数量
+        display_count = min(len(ids), max_display)
+        
+        # 计算子图布局
+        cols = min(3, display_count)
+        rows = (display_count + cols - 1) // cols
+        
+        fig, axes = plt.subplots(rows, cols, figsize=(15, 5 * rows))
+        if display_count == 1:
+            axes = [axes]
+        elif rows == 1:
+            axes = axes if isinstance(axes, list) else [axes]
+        else:
+            axes = axes.flatten()
+        
+        for i in range(display_count):
+            metadata = metadatas[i] if i < len(metadatas) else {}
+            distance = distances[i] if i < len(distances) else 0
+            
+            image_path = metadata.get('image_path', '')
+            caption = metadata.get('caption', '无标题')
+            
+            try:
+                if os.path.exists(image_path):
+                    img = Image.open(image_path)
+                    axes[i].imshow(img)
+                    axes[i].set_title(f"{caption}\n距离: {distance:.4f}", fontsize=10)
+                else:
+                    axes[i].text(0.5, 0.5, f"图片不存在\n{image_path}", 
+                               ha='center', va='center', transform=axes[i].transAxes)
+                    axes[i].set_title(f"{caption}\n距离: {distance:.4f}", fontsize=10)
+            except Exception as e:
+                self.logger.error(f"显示图片时出错: {e}")
+                axes[i].text(0.5, 0.5, f"显示错误\n{str(e)}", 
+                           ha='center', va='center', transform=axes[i].transAxes)
+                axes[i].set_title(f"{caption}\n距离: {distance:.4f}", fontsize=10)
+            
+            axes[i].axis('off')
+        
+        # 隐藏多余的子图
+        for i in range(display_count, len(axes)):
+            axes[i].axis('off')
+        
+        plt.tight_layout()
+        plt.show()
+
+
+# 辅助函数
+def get_image_collection():
+    """获取图像集合的辅助函数"""
+    from MedicalRAG.config.config import get_image_collection as config_get_image_collection
+    return config_get_image_collection()
+
+
+def create_image_retrieval_result(image_path: str, caption: str = None, 
+                                 score: float = 0.0, metadata: Dict = None) -> RetrievalResult:
+    """创建图像检索结果"""
+    return RetrievalResult(
+        content=caption or f"图像: {os.path.basename(image_path)}",
+        metadata=metadata or {'image_path': image_path, 'caption': caption},
+        score=score,
+        retrieval_type='image'
+    )
