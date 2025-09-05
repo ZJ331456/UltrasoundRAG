@@ -1,0 +1,235 @@
+milvus: 
+    milvus_uri: "http://localhost:19530"
+    milvus_token: "root:Milvus"
+    db_name: "ultrasound_vector"
+    md_collection_name: "md_documents"
+    image_collection_name: "images"
+# 索引创建的总配置
+indexing:
+  db_name: "ultrasound_vector"
+  # 图片解析配置
+  image_parse:
+    model_path: "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/models/fetal-clip/dataset2-pretrain/final_model.pt"
+    model_config_path: "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/models/fetal-clip/config.json"
+
+  # Markdown 解析配置
+  markdown_parse:
+    max_chunk_size: 1500 #单个chunk的大小 
+    overlap_ratio: 0.15  #重叠窗口比例，15%可以保持较好的语义连续性
+    min_chunk_size: 100  #最小chunk大小，避免过短的无意义片段 
+
+  markdown:
+    collections: "markdown_index"
+    datasets:
+      ultrasound_book:
+        enabled: true
+        base_md_path: "data/book/markdown"
+        description: "超声书籍Markdown数据集"
+      ultrasound_guides:
+        enabled: false
+        base_md_path: ""
+        description: "超声指南Markdown数据集"
+  image:
+    collections: "image_index"
+    datasets:
+      ultrasound_book:
+        enabled: true
+        base_image_path: "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image" 
+        image_index_path: "image_index.jsonl"
+        description: "超声书籍图片数据集"
+      ultrasound_clinical: 
+        enabled: false
+        base_image_path: ""
+        image_index_path: ""
+        description: "临床超声图片数据集"
+
+# Embedding 模型配置
+embedding:
+  provider: "qwen_embedding" # 通过此名称在下方的 embedding_providers 中查找模型
+
+# 重排序配置
+rerank:
+  enabled: true  # 是否启用重排序
+  
+  # 重排序器类型: "model_based" (使用本地Cross-Encoder) 或 "llm_based" (使用大语言模型)
+  type: "model_based" 
+
+  # --- model_based reranker config (当 type 为 "model_based") ---
+  model_path: "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/models/jina-reranker-v2-base-multilingual"
+  top_n: 3 # Reranker返回的结果数
+  device: "cuda"  # 或 "cuda"
+  batch_size: 1
+
+  # --- llm_based reranker config (当 type 为 "llm_based") ---
+  # 在 llm_providers 中定义的LLM provider名称
+  llm_provider: "medical_vllm_api" 
+  # "basic", "advanced", "explanation", "medical", "auto"
+  prompt_type: "auto" 
+
+# 检索器配置
+retriever:
+  # 基础检索配置
+  top_k: 10  # 检索返回的文档数量
+  similarity_threshold: 0.5  # 相似度阈值
+  enable_cache: true  # 是否启用缓存
+  
+  # 多数据库和集合配置
+  databases:
+    default:
+      db_name: "ultrasound_vector"
+      collections:
+        text: "md_documents"  # 文本集合
+        image: "images"       # 图片集合
+    # 可以添加更多数据库配置
+    # medical_specialized:
+    #   db_name: "medical_specialist_vector"
+    #   collections:
+    #     text: "specialist_docs"
+    #     image: "specialist_images"
+  
+  # 检索方式配置
+  retrieval_modes:
+    # 文本到文本检索（T2T）
+    t2t:
+      enabled: true
+      strategy: "fusion"  # "basic" 或 "fusion"
+      fusion_config:
+        text_search_ratio: 0.7
+        image_caption_ratio: 0.3
+        enable_exact_title_match: true
+        enable_deduplication: true
+        content_similarity_threshold: 0.8
+    
+    # 文本到图片检索（T2I）
+    t2i:
+      enabled: true
+      use_clip_text_encoder: true  # 使用CLIP文本编码器
+      
+    # 图片到文本检索（I2T）
+    i2t:
+      enabled: true
+      return_caption_as_text: true  # 将caption作为文本结果返回
+      
+    # 图片到图片检索（I2I）
+    i2i:
+      enabled: true
+      include_metadata: true  # 包含图片元数据
+  
+  # Caption检索图片模块
+  caption_to_image:
+    enabled: true
+    search_mode: "exact_match"  # "exact_match", "fuzzy_match", "semantic_match"
+    fuzzy_threshold: 0.8  # 模糊匹配阈值
+    max_results_per_caption: 3  # 每个caption最多返回的图片数
+    
+  # 融合检索配置
+  fusion:
+    default_strategy: "weighted"  # "weighted", "interleaved", "score_based"
+    weights:
+      text: 0.6
+      image: 0.4
+    enable_multimodal_fusion: true
+
+# 答案生成配置
+generator:
+  # llm_provider: "xiaohumini_llm_api" # 用于生成答案的LLM
+  llm_provider: "medical_vllm_api" # 用于生成答案的LLM
+  # llm_provider: "my_qwen_llm" # 用于生成答案的LLM
+  # 动态上下文长度控制参数
+  context_control:
+    model_max_len: 10240
+    image_token_cost: 2500
+    prompt_overhead_cost: 1500
+    answer_cost: 1000
+    chars_per_token: 1.8
+  # 答案后处理
+  postprocessor:
+    max_length: 200 # 答案最大长度
+  # 图像处理
+  image_processing:
+    max_images: 3 # 最多加载的图片数量
+
+# 评估输入文件路径
+evaluator:
+  input_eval_file: "results/retrival/medical_rag_results_20250708_151646.json"
+
+# 提示工程配置
+prompt_engineer:
+  language: "zh"
+
+# 大语言模型提供者配置
+llm_providers:
+  medical_vllm_api:
+    type: api
+    params:
+      model_name: "DolphinUltrasoundV19"
+      api_url: "http://180.76.114.40/auth/s-rd21ade7a13b/8000/v1"
+      endpoint_path: "/chat/completions" # 指向OpenAI兼容的聊天补全端点
+      api_key: "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNzbSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NTIwMjM5NjIsImlzcyI6ImFpaGMiLCJzdWIiOiJzLXJkMjFhZGU3YTEzYi1leHRlcm5hbCJ9.GGZIcDQZF-hQlpXRGdlCxCds-YInBquPIvczSOsxzXdvlkyu8UbmOWB9TQRa8yUlOQADqqK14fUKCPkVMkeFkESm69UwdyG4L5DnosECZ-TWvbUB5d7Py3Voeh_MBm0Z7e2d2qPL92gFpPmcw5NKq5OupGYcpuveFeDvllkgrPPjAYIG5g9SFyHib_83wDg7QHfmVd-NI8ewQdgOuFPm-svypn4mdilIszCfX_1PMAdT4CwA0RssIVLEcoVf7wCMnrfGwluLLdY4VSqHHL0F-K2imkU4EcqxkE-tYaWuQ8bKO8HskrFkpq_z3AUt2gNNtC5-F8i1x2chW30AIdlHmA"
+      max_tokens: 2048
+      temperature: 0.6
+      is_vision_model: true #标记是否是视觉模型
+      timeout: 180 # 请求超时时间（秒）
+
+  xiaohumini_llm_api:
+    type: api
+    params:
+      # model_name: "gpt-4o"
+      model_name: "qwen-vl-plus"
+      # embedding_model_name: "text-embedding-3-small"
+      api_url: "https://xiaohumini.site/v1" # 修正：恢复为基础URL，让代码自动拼接/chat/completions
+      api_key: "sk-wvCLuRHyTbcJtsb4tNmLckcrESx3CMQw7ufwuIUBrNMNoDD2"
+      max_tokens: 1024
+      temperature: 0.6
+      is_vision_model: true # 明确 gpt-4o 是一个视觉模型
+      timeout: 180 # 请求超时时间（秒）
+  qwen_vl_api:
+    type: api
+    params:
+      model_name: "Qwen25-VL-72B-Instruct"
+      api_url: "https://one-api.s.metames.cn:38443/v1"
+      api_key: "sk-NOwyBUae2bveENbN6d00D57612D349498057Df84CbAeA158"
+      max_tokens: 1024
+      temperature: 0.6
+      is_vision_model: true 
+      timeout: 180 
+  local_llm:
+    type: local
+    params:
+      model_path: "./models/Qwen3-Embedding-0.6B"
+      device: "cpu"
+      max_length: 2048
+      do_sample: true
+  
+  my_qwen_llm:
+    type: api
+    params:
+      model_name: "qwen-vl-plus-2025-08-15"
+      api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1/"
+      api_key: "sk-8f0981965c8b49aebc2bac261c07fe80"
+      max_tokens: 1024
+      temperature: 0.6
+      is_vision_model: true 
+      timeout: 180 
+
+embedding_providers:
+  qwen_embedding:
+    type: local
+    params:
+      model_name: "models/Qwen3-Embedding-0.6B"
+      device: "cuda"
+
+  bge_zh_local_embedding:
+    type: local
+    params:
+      model_name: "models/bge-small-zh-v1.5"
+      device: "cuda"
+
+  openai_api_embedding:
+    type: api
+    params:
+      api_url: "https://xiaohumini.site/v1"
+      api_key: "sk-wvCLuRHyTbcJtsb4tNmLckcrESx3CMQw7ufwuIUBrNMNoDD2"
+      model_name: "text-embedding-ada-002"
+
+

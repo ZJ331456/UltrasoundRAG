@@ -1,0 +1,82 @@
+# ---- Python 通用 ----
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ---- 虚拟环境与编辑器 ----
+.venv/
+venv/
+env/
+.vscode/
+.idea/
+.DS_Store
+
+# ---- 构建与打包 ----
+build/
+dist/
+*.egg-info/
+
+# ---- 日志与缓存 ----
+logs/
+*.log
+.cache/
+cache/
+tmp/
+temp/
+
+# ---- 训练输出/检查点 ----
+runs/
+outputs/
+checkpoints/
+experiments/
+results/
+
+# ---- 数据集与大文件目录（保留说明文档） ----
+data/**
+datasets/**
+media/**
+!data/**/*.md
+!datasets/**/*.md
+!media/**/*.md
+
+# ---- 模型权重目录与权重文件扩展（保留配置与说明） ----
+models/**
+model/**
+!models/**/*.md
+!models/**/*.txt
+!models/**/*.json
+!models/**/*.yaml
+!models/**/*.yml
+!model/**/*.md
+!model/**/*.txt
+!model/**/*.json
+!model/**/*.yaml
+!model/**/*.yml
+
+# 常见模型/权重大文件扩展（全局忽略）
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.ckpt
+*.weights
+*.tflite
+*.h5
+*.pb
+*.npz
+
+# ---- 前端（若存在） ----
+node_modules/
+.parcel-cache/
+.next/
+next-env.d.ts
+*.map
+
