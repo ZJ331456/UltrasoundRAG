@@ -302,7 +302,18 @@ class CaptionToImageRetriever:
         self.match_config = match_config or CaptionMatchConfig()
         
         # 初始化CLIP模型（用于语义匹配）
-        if self.search_config.search_mode in [SearchMode.SEMANTIC_MATCH, SearchMode.HYBRID_MATCH]:
+        self.clip_model = None
+        self._ensure_clip_initialized(self.search_config.search_mode)
+        
+        # 初始化子组件
+        self.extractor = ImageTitleExtractor()
+        self.variant_matcher = CaptionVariantMatcher(self.match_config)
+        
+        self.logger.info(f"Caption检索器初始化完成，搜索模式: {self.search_config.search_mode.value}")
+
+    def _ensure_clip_initialized(self, search_mode: SearchMode) -> None:
+        """在需要语义/混合匹配时，确保CLIP已被初始化（惰性初始化）。"""
+        if search_mode in [SearchMode.SEMANTIC_MATCH, SearchMode.HYBRID_MATCH] and self.clip_model is None:
             try:
                 image_parse_config = config['indexing']['image_parse']
                 self.clip_model = FetalCLIPModel(
@@ -313,14 +324,6 @@ class CaptionToImageRetriever:
             except Exception as e:
                 self.logger.warning(f"CLIP模型初始化失败: {e}，将回退到非语义匹配模式")
                 self.clip_model = None
-        else:
-            self.clip_model = None
-        
-        # 初始化子组件
-        self.extractor = ImageTitleExtractor()
-        self.variant_matcher = CaptionVariantMatcher(self.match_config)
-        
-        self.logger.info(f"Caption检索器初始化完成，搜索模式: {self.search_config.search_mode.value}")
     
     def search_single_caption(self, caption: str, 
                             top_k: Optional[int] = None,
@@ -556,6 +559,7 @@ class CaptionToImageRetriever:
     
     def _semantic_title_match(self, title: str, top_k: int) -> List[RetrievalResult]:
         """语义标题匹配"""
+        self._ensure_clip_initialized(SearchMode.SEMANTIC_MATCH)
         if not self.clip_model:
             self.logger.warning("CLIP模型未初始化，无法进行语义匹配")
             return []
@@ -702,6 +706,7 @@ class CaptionToImageRetriever:
     
     def _semantic_match_search(self, caption: str, top_k: int) -> List[RetrievalResult]:
         """语义匹配搜索"""
+        self._ensure_clip_initialized(SearchMode.SEMANTIC_MATCH)
         if not self.clip_model:
             self.logger.warning("CLIP模型未初始化，无法进行语义匹配")
             return []
