@@ -5,6 +5,8 @@ UltrasoundRAG 简单前端界面
 使用方法：
 python frontend.py
 然后在浏览器中访问 http://localhost:8501
+
+streamlit run frontend.py --server.port 8502
 """
 
 import streamlit as st
@@ -88,7 +90,26 @@ def display_text_results(results: List[Dict], title: str = "文本结果"):
                     st.write("**文件路径:**")
                     st.code(getattr(result, 'metadata', {}).get('relative_path', ''))
 
-def display_image_results(results: List[Dict], title: str = "图片结果"):
+def _resolve_image_path(relative_path: str, base_dir: str) -> Optional[str]:
+    """根据侧边栏的图片根目录解析并返回可读路径。"""
+    if not relative_path:
+        return None
+    # 已是绝对路径且存在
+    if os.path.isabs(relative_path) and os.path.exists(relative_path):
+        return relative_path
+    # 尝试使用用户提供的根目录拼接
+    if base_dir:
+        candidate = os.path.join(base_dir, relative_path.lstrip("/"))
+        if os.path.exists(candidate):
+            return candidate
+    # 回退：尝试以当前工作目录为根
+    candidate = os.path.join(os.getcwd(), relative_path.lstrip("/"))
+    if os.path.exists(candidate):
+        return candidate
+    return None
+
+
+def display_image_results(results: List[Dict], title: str = "图片结果", base_image_root: str = ""):
     """显示图片检索结果"""
     if not results:
         st.info("没有找到相关图片结果")
@@ -107,8 +128,17 @@ def display_image_results(results: List[Dict], title: str = "图片结果"):
                 
                 # 显示图片路径信息
                 metadata = getattr(result, 'metadata', {})
-                if 'relative_path' in metadata:
-                    st.write(f"路径: {metadata['relative_path']}")
+                rel_path = metadata.get('relative_path')
+                if rel_path:
+                    resolved = _resolve_image_path(rel_path, base_image_root)
+                    if resolved and os.path.isfile(resolved):
+                        try:
+                            img = Image.open(resolved)
+                            st.image(img, caption=os.path.basename(resolved), use_container_width=True)
+                        except Exception as _:
+                            st.write(f"路径: {rel_path}")
+                    else:
+                        st.write(f"路径: {rel_path}")
                 
                 # 显示caption
                 content = getattr(result, 'content', '')
@@ -175,6 +205,8 @@ def main():
         db_name = st.selectbox("数据库", ["default"], help="选择要查询的数据库")
         
         st.markdown("---")
+        # 新增：图片根目录，便于根据 relative_path 显示图片
+        base_image_root = st.text_input("图片根目录", value="/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image", help="用于解析结果中的 relative_path 以显示图片")
         st.header("ℹ️ 系统信息")
         
         # 显示检索器状态
@@ -219,7 +251,7 @@ def main():
                     end_time = time.time()
                 
                 st.success(f"检索完成！耗时 {end_time - start_time:.3f} 秒")
-                display_image_results(result.get('results', []), "图片检索结果")
+                display_image_results(result.get('results', []), "图片检索结果", base_image_root)
             else:
                 st.warning("请输入查询文本")
     
@@ -277,7 +309,7 @@ def main():
                     end_time = time.time()
                 
                 st.success(f"检索完成！耗时 {end_time - start_time:.3f} 秒")
-                display_image_results(result.get('results', []), "相似图片结果")
+                display_image_results(result.get('results', []), "相似图片结果", base_image_root)
                 
                 # 清理临时文件
                 try:
@@ -329,7 +361,7 @@ def main():
                     st.write(f"**提取到的Caption:** {', '.join(extracted_captions)}")
                 
                 # 显示检索结果
-                display_image_results(result.get('results', []), "匹配的图片结果")
+                display_image_results(result.get('results', []), "匹配的图片结果", base_image_root)
             else:
                 st.warning("请输入包含图片引用的文本")
     
@@ -360,7 +392,7 @@ def main():
                     display_text_results(t2t_result.get('results', []), "文本检索结果")
                 
                 with col2:
-                    display_image_results(t2i_result.get('results', []), "图片检索结果")
+                    display_image_results(t2i_result.get('results', []), "图片检索结果", base_image_root)
                 
                 # Caption检索结果
                 if caption_result.get('total_results', 0) > 0:

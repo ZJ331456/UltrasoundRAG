@@ -79,6 +79,13 @@ class T2TRetriever(BaseRetriever):
         # 获取T2T配置
         self.t2t_config = config['retriever']['retrieval_modes']['t2t']
         
+        # 初始化CLIP模型（用于第二路文本编码），避免每次检索重复加载
+        image_parse_config = config['indexing']['image_parse']
+        self.clip_model = FetalCLIPModel(
+            model_path=image_parse_config['model_path'],
+            config_path=image_parse_config['model_config_path']
+        )
+
         self.logger.info("T2T检索器初始化完成")
     
     def search(self, query: str, top_k: Optional[int] = None, strategy: Optional[str] = None) -> Dict[str, Any]:
@@ -154,25 +161,17 @@ class T2TRetriever(BaseRetriever):
     def _fusion_search(self, query: str, top_k: int) -> Dict[str, Any]:
         """融合文本检索（结合图片caption检索）"""
         try:
-            # 多向量混合检索（Qwen + CLIP）
-            # 生成两路查询向量
-            qwen_vec = None
-            clip_vec = None
-            # 文本嵌入器（可能是BGE/Qwen等）
+            # 多向量混合检索（Qwen + CLIP），强制两路同时可用
+            # 1) 生成两路查询向量
             qwen_vec = self.text_embedder.get_query_embedding(query)
-            # 可选：使用CLIP文本编码器作为第二路
-            try:
-                from UltrasoundRAG.model.fetal_clip_model import FetalCLIPModel
-                image_parse_config = config['indexing']['image_parse']
-                clip_model = FetalCLIPModel(
-                    model_path=image_parse_config['model_path'],
-                    config_path=image_parse_config['model_config_path']
-                )
-                tokens = clip_model.tokenize_text([query])
-                clip_vec = clip_model.encode_text(tokens).cpu().numpy().tolist()[0]
-            except Exception:
-                clip_vec = None
+            tokens = self.clip_model.tokenize_text([query])
+            clip_vec = self.clip_model.encode_text(tokens).cpu().numpy().tolist()[0]
 
+            # 2) 严格校验两路维度
+            if not (isinstance(qwen_vec, list) and len(qwen_vec) == 1024 and isinstance(clip_vec, list) and len(clip_vec) == 768):
+                raise ValueError("T2T融合检索需要两路向量(qwen-1024 与 clip-768)同时可用且维度匹配")
+
+            # 3) 构造过滤/分区
             filter_expr = ""
             partitions = None
             if self.context.domain:
@@ -180,41 +179,43 @@ class T2TRetriever(BaseRetriever):
                 if self.context.use_partition:
                     partitions = [self.context.domain.replace(' ', '_')[:64]]
 
-            if qwen_vec and len(qwen_vec) == 1024 and clip_vec and len(clip_vec) == 768:
-                field_to_embedding = {
-                    "text_vector_qwen_1024": qwen_vec,
-                    "text_vector_clip_768": clip_vec,
-                }
-                weights = {
-                    "text_vector_qwen_1024": 0.6,
-                    "text_vector_clip_768": 0.4,
-                }
-                raw = self.text_manager.search_multi_vectors(field_to_embedding, top_k=top_k, weights=weights, filter_expr=filter_expr, partition_names=partitions)
-                # 统一结果结构
-                text_results = []
-                for result in raw:
-                    retrieval_result = RetrievalResult(
-                        doc_id=str(result.get('id', '')),
-                        content=result.get('content', ''),
-                        metadata={
-                            'title': result.get('title', ''),
-                            'md_file': result.get('md_file', ''),
-                            'document_name': result.get('document_name', ''),
-                            'chunk_index': result.get('chunk_index', 0),
-                            'image_links': result.get('image_links', []),
-                            'image_captions': result.get('image_captions', []),
-                            'search_strategy': 'fusion_t2t_multivector',
-                            'domain': result.get(self.text_manager.domain_field_name, '')
-                        },
-                        score=result.get('score', 0.0),
-                        retrieval_type='text_to_text'
-                    )
-                    text_results.append(retrieval_result)
-            else:
-                # 回退到基础检索
-                basic_result = self._basic_search(query, top_k)
-                text_results = basic_result['results']
-            text_results = basic_result['results']
+            # 4) 并行检索并融合
+            field_to_embedding = {
+                "text_vector_qwen_1024": qwen_vec,
+                "text_vector_clip_768": clip_vec,
+            }
+            weights = {
+                "text_vector_qwen_1024": 0.6,
+                "text_vector_clip_768": 0.4,
+            }
+            raw = self.text_manager.search_multi_vectors(
+                field_to_embedding,
+                top_k=top_k,
+                weights=weights,
+                filter_expr=filter_expr,
+                partition_names=partitions,
+            )
+
+            # 5) 统一结果结构
+            text_results = []
+            for result in raw:
+                retrieval_result = RetrievalResult(
+                    doc_id=str(result.get('id', '')),
+                    content=result.get('content', ''),
+                    metadata={
+                        'title': result.get('title', ''),
+                        'md_file': result.get('md_file', ''),
+                        'document_name': result.get('document_name', ''),
+                        'chunk_index': result.get('chunk_index', 0),
+                        'image_links': result.get('image_links', []),
+                        'image_captions': result.get('image_captions', []),
+                        'search_strategy': 'fusion_t2t_multivector',
+                        'domain': result.get(self.text_manager.domain_field_name, '')
+                    },
+                    score=result.get('score', 0.0),
+                    retrieval_type='text_to_text'
+                )
+                text_results.append(retrieval_result)
             
             # 如果启用了融合策略，还需要进行图片caption检索
             fusion_config = self.t2t_config['fusion_config']
