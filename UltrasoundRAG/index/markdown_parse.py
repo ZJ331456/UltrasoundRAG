@@ -1,3 +1,10 @@
+"""
+功能: 处理Markdown文档，进行智能分块
+分块策略: 按标题层级分块，支持重叠窗口
+图片提取: 自动提取文档中的图片链接和标题，这个
+智能分割: 优先按段落分割，其次按句子分割，保持语义完整性
+
+"""
 import os
 import re
 from typing import List, Dict, Optional, Tuple

@@ -185,7 +185,8 @@ class T2TFusionStrategy:
                             'original_score': img_result.score
                         },
                         score=img_result.score * self.config.image_caption_ratio,
-                        retrieval_type='image_caption_to_text'
+                        retrieval_type='image_caption_to_text',
+                        resource_collection=img_result.resource_collection
                     )
                     caption_results.append(text_result)
             

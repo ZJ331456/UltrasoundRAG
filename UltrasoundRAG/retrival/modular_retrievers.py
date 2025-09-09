@@ -18,7 +18,7 @@ from UltrasoundRAG.utils.logger import setup_logger
 from UltrasoundRAG.retrival.data_structures import RetrievalResult
 from UltrasoundRAG.milvus.milvus_manager import MilvusManager
 from UltrasoundRAG.utils.embedding_utils import embedding_provider
-from UltrasoundRAG.model.fetal_clip_model import FetalCLIPModel
+from UltrasoundRAG.model.model_manager import get_fetal_clip_model, get_embedding_model
 from UltrasoundRAG.config import config
 from UltrasoundRAG.retrival.caption_to_image_retriever import create_caption_retriever
 from PIL import Image
@@ -28,8 +28,8 @@ from PIL import Image
 class RetrievalContext:
     """检索上下文配置"""
     db_name: str
-    text_collection: str
-    image_collection: str
+    text_collection: Optional[str]
+    image_collection: Optional[str]
     top_k: int = 10
     milvus_uri: Optional[str] = None
     milvus_token: Optional[str] = None
@@ -63,6 +63,8 @@ class T2TRetriever(BaseRetriever):
         super().__init__(context)
         
         # 初始化文本集合管理器
+        if not context.text_collection:
+            raise ValueError("当前数据库未配置文本集合（collections.text 为空），无法进行 T2T 检索")
         self.text_manager = MilvusManager(
             milvus_uri=self.milvus_uri,
             milvus_token=self.milvus_token,
@@ -72,19 +74,14 @@ class T2TRetriever(BaseRetriever):
             enable_domain_partition=context.use_partition
         )
         
-        # 初始化文本嵌入模型
-        embedding_provider_name = config['embedding']['provider']
-        self.text_embedder = embedding_provider[embedding_provider_name]
+        # 初始化文本嵌入模型（使用共享实例）
+        self.text_embedder = get_embedding_model()
         
         # 获取T2T配置
         self.t2t_config = config['retriever']['retrieval_modes']['t2t']
         
-        # 初始化CLIP模型（用于第二路文本编码），避免每次检索重复加载
-        image_parse_config = config['indexing']['image_parse']
-        self.clip_model = FetalCLIPModel(
-            model_path=image_parse_config['model_path'],
-            config_path=image_parse_config['model_config_path']
-        )
+        # 获取CLIP模型（使用共享实例，避免重复加载）
+        self.clip_model = get_fetal_clip_model()
 
         self.logger.info("T2T检索器初始化完成")
     
@@ -142,7 +139,8 @@ class T2TRetriever(BaseRetriever):
                         'search_strategy': 'basic_t2t'
                     },
                     score=result.get('score', 0.0),
-                    retrieval_type='text_to_text'
+                    retrieval_type='text_to_text',
+                    resource_collection=self.text_manager.collection_name
                 )
                 results.append(retrieval_result)
             
@@ -213,7 +211,8 @@ class T2TRetriever(BaseRetriever):
                         'domain': result.get(self.text_manager.domain_field_name, '')
                     },
                     score=result.get('score', 0.0),
-                    retrieval_type='text_to_text'
+                    retrieval_type='text_to_text',
+                    resource_collection=self.text_manager.collection_name
                 )
                 text_results.append(retrieval_result)
             
@@ -293,7 +292,8 @@ class T2TRetriever(BaseRetriever):
                             'search_strategy': 'caption_to_text'
                         },
                         score=img_result.score,
-                        retrieval_type='caption_to_text'
+                        retrieval_type='caption_to_text',
+                        resource_collection=img_result.resource_collection
                     )
                     caption_results.append(text_result)
             
@@ -337,6 +337,8 @@ class T2IRetriever(BaseRetriever):
         super().__init__(context)
         
         # 初始化图片集合管理器
+        if not context.image_collection:
+            raise ValueError("当前数据库未配置图片集合（collections.image 为空），无法进行 T2I 检索")
         self.image_manager = MilvusManager(
             milvus_uri=self.milvus_uri,
             milvus_token=self.milvus_token,
@@ -346,12 +348,8 @@ class T2IRetriever(BaseRetriever):
             enable_domain_partition=context.use_partition
         )
         
-        # 初始化CLIP模型
-        image_parse_config = config['indexing']['image_parse']
-        self.clip_model = FetalCLIPModel(
-            model_path=image_parse_config['model_path'],
-            config_path=image_parse_config['model_config_path']
-        )
+        # 获取CLIP模型（使用共享实例，避免重复加载）
+        self.clip_model = get_fetal_clip_model()
         
         # 获取T2I配置
         self.t2i_config = config['retriever']['retrieval_modes']['t2i']
@@ -416,7 +414,8 @@ class T2IRetriever(BaseRetriever):
                         'search_strategy': 'text_to_image'
                     },
                     score=result.get('score', 0.0),
-                    retrieval_type='text_to_image'
+                    retrieval_type='text_to_image',
+                    resource_collection=self.image_manager.collection_name
                 )
                 results.append(retrieval_result)
             
@@ -485,12 +484,8 @@ class I2TRetriever(BaseRetriever):
             collection_type="md"
         )
         
-        # 初始化CLIP模型
-        image_parse_config = config['indexing']['image_parse']
-        self.clip_model = FetalCLIPModel(
-            model_path=image_parse_config['model_path'],
-            config_path=image_parse_config['model_config_path']
-        )
+        # 获取CLIP模型（使用共享实例，避免重复加载）
+        self.clip_model = get_fetal_clip_model()
         
         # 获取I2T配置
         self.i2t_config = config['retriever']['retrieval_modes']['i2t']
@@ -550,7 +545,8 @@ class I2TRetriever(BaseRetriever):
                         'search_strategy': 'image_to_text'
                     },
                     score=result.get('score', 0.0),
-                    retrieval_type='image_to_text'
+                    retrieval_type='image_to_text',
+                    resource_collection=self.text_manager.collection_name
                 )
                 results.append(retrieval_result)
             
@@ -590,12 +586,8 @@ class I2IRetriever(BaseRetriever):
             collection_type="image"
         )
         
-        # 初始化CLIP模型
-        image_parse_config = config['indexing']['image_parse']
-        self.clip_model = FetalCLIPModel(
-            model_path=image_parse_config['model_path'],
-            config_path=image_parse_config['model_config_path']
-        )
+        # 获取CLIP模型（使用共享实例，避免重复加载）
+        self.clip_model = get_fetal_clip_model()
         
         # 获取I2I配置
         self.i2i_config = config['retriever']['retrieval_modes']['i2i']
@@ -658,7 +650,8 @@ class I2IRetriever(BaseRetriever):
                     content=result.get('caption', ''),  # 使用caption作为content
                     metadata=metadata,
                     score=result.get('score', 0.0),
-                    retrieval_type='image_to_image'
+                    retrieval_type='image_to_image',
+                    resource_collection=self.image_manager.collection_name
                 )
                 results.append(retrieval_result)
             
@@ -703,6 +696,9 @@ def create_retrieval_context(db_name: str = "default", top_k: int = 10) -> Retri
         db_name = "default"
     
     db_config = databases_config[db_name]
+    cols = db_config.get('collections', {}) or {}
+    text_col = cols.get('text', "")
+    image_col = cols.get('image', "")
     
     return RetrievalContext(
         db_name=db_config['db_name'],

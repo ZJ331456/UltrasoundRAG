@@ -25,7 +25,7 @@ from UltrasoundRAG.utils.logger import setup_logger
 from UltrasoundRAG.retrival.data_structures import RetrievalResult
 from UltrasoundRAG.milvus.milvus_manager import MilvusManager
 from UltrasoundRAG.utils.embedding_utils import embedding_provider
-from UltrasoundRAG.model.fetal_clip_model import FetalCLIPModel
+from UltrasoundRAG.model.model_manager import get_fetal_clip_model
 from UltrasoundRAG.config import config
 
 
@@ -315,11 +315,8 @@ class CaptionToImageRetriever:
         """在需要语义/混合匹配时，确保CLIP已被初始化（惰性初始化）。"""
         if search_mode in [SearchMode.SEMANTIC_MATCH, SearchMode.HYBRID_MATCH] and self.clip_model is None:
             try:
-                image_parse_config = config['indexing']['image_parse']
-                self.clip_model = FetalCLIPModel(
-                    model_path=image_parse_config['model_path'],
-                    config_path=image_parse_config['model_config_path']
-                )
+                # 使用共享模型实例，避免重复加载
+                self.clip_model = get_fetal_clip_model()
                 self.logger.info("CLIP模型初始化成功，支持语义匹配")
             except Exception as e:
                 self.logger.warning(f"CLIP模型初始化失败: {e}，将回退到非语义匹配模式")
@@ -641,7 +638,8 @@ class CaptionToImageRetriever:
                         'matched_variant': caption
                     },
                     score=1.0,  # 精确匹配给满分
-                    retrieval_type='caption_to_image'
+                    retrieval_type='caption_to_image',
+                    resource_collection=self.image_manager.collection_name
                 )
                 retrieval_results.append(retrieval_result)
             
@@ -805,7 +803,8 @@ class CaptionToImageRetriever:
                     'fuzzy_score': result.get('fuzzy_score', None)
                 },
                 score=result.get('score', 0.0),
-                retrieval_type='caption_to_image'
+                retrieval_type='caption_to_image',
+                resource_collection=self.image_manager.collection_name
             )
             results.append(retrieval_result)
         

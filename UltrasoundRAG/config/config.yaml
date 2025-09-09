@@ -2,7 +2,7 @@ milvus:
     milvus_uri: "http://localhost:19530"
     milvus_token: "root:Milvus"
     db_name: "ultrasound_vector"
-    md_collection_name: "md_documents"
+    md_collection_name: "thyroidagent"
     image_collection_name: "images"
 # 索引创建的总配置
 indexing:
@@ -19,28 +19,37 @@ indexing:
     min_chunk_size: 100  #最小chunk大小，避免过短的无意义片段 
 
   markdown:
-    collections: "markdown_index"
+    # collections: "markdown_index"  # 默认集合名（可被每个数据集的 collection_name 覆盖）
     datasets:
       ultrasound_book:
         enabled: true
         base_md_path: "data/book/markdown"
+        collection_name: "normal_book_md"
         description: "超声书籍Markdown数据集"
       ultrasound_guides:
         enabled: false
         base_md_path: ""
+        collection_name: "markdown_guides"
         description: "超声指南Markdown数据集"
+      thyroidagent:
+        enabled: true
+        base_md_path: "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/thyroidagent/markdown"
+        collection_name: "thyroid_agent_md"
+        description: "甲状腺Agent Markdown数据集"
   image:
-    collections: "image_index"
+    # collections: "image_index"  # 默认集合名（可被每个数据集的 collection_name 覆盖）
     datasets:
       ultrasound_book:
         enabled: true
         base_image_path: "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image" 
         image_index_path: "image_index.jsonl"
+        collection_name: "normal_book_image"
         description: "超声书籍图片数据集"
       ultrasound_clinical: 
         enabled: false
         base_image_path: ""
         image_index_path: ""
+        collection_name: "ultrasound_clinical_images"
         description: "临床超声图片数据集"
 
 # Embedding 模型配置
@@ -78,8 +87,35 @@ retriever:
     default:
       db_name: "ultrasound_vector"
       collections:
-        text: "md_documents"  # 文本集合
-        image: "images"       # 图片集合
+        text: "markdown_index"
+        image: "image_index"
+      type: "general"
+      priority: 1
+      enabled: true
+      description: "默认数据库：书籍文本+图片"
+      tags: ["default", "book"]
+        # text: "thyroidagent"  # 文本集合
+        # image: "images"       # 图片集合
+    normal:
+      db_name: "ultrasound_vector"
+      collections:
+        text: "markdown_index"
+        image: "image_index"
+      type: "general"
+      priority: 1
+      enabled: true
+      description: "书籍文本+图片（normal）"
+      tags: ["book"]
+    md_thyroid:
+      db_name: "ultrasound_vector"
+      collections:
+        text: "thyroidagent"
+        image: ""
+      type: "general"
+      priority: 1
+      enabled: true
+      description: "甲状腺文本+图片（thyroidagent + image_index）"
+      tags: ["thyroid"]
     # 可以添加更多数据库配置
     # medical_specialized:
     #   db_name: "medical_specialist_vector"

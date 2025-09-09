@@ -48,13 +48,6 @@ def build_markdown_index(recreate: bool = False, only_datasets: list | None = No
     print("开始构建 Markdown 索引")
     markdown_cfg = config['indexing']['markdown']
 
-    manager = MilvusManager(collection_type="md")
-    if recreate:
-        print("重建 Markdown 集合: 先删除再创建")
-        manager.drop_collection()
-        # 重新创建集合
-        manager._setup_collection()
-
     built_count = 0
     skipped_count = 0
     global_id = 1  # 跨数据集统一分配主键，避免冲突
@@ -65,6 +58,14 @@ def build_markdown_index(recreate: bool = False, only_datasets: list | None = No
             continue
         if dataset_cfg.get('enabled', False):
             print(f"\n处理 Markdown 数据集: {dataset_name}")
+            # 为该数据集确定集合名（优先用数据集级别的 collection_name，否则回退到全局默认）
+            target_collection = dataset_cfg.get('collection_name', markdown_cfg.get('collections', 'md_documents'))
+            # 为该数据集实例化独立的 MilvusManager，指向专属集合
+            manager = MilvusManager(collection_type="md", collection_name=target_collection)
+            if recreate:
+                print(f"重建 Markdown 集合: {target_collection} (先删除再创建)")
+                manager.drop_collection()
+                manager._setup_collection()
             parser = MarkdownParser(dataset_name=dataset_name)
             parsed_data = parser.parse_markdowns()
             if not parsed_data:
@@ -123,29 +124,20 @@ def build_markdown_index(recreate: bool = False, only_datasets: list | None = No
             success = insert_ok
             if success:
                 built_count += 1
-                print(f"✓ 数据集 {dataset_name} 索引构建成功")
+                print(f"✓ 数据集 {dataset_name} 索引构建成功 -> 集合: {target_collection}")
             else:
-                print(f"✗ 数据集 {dataset_name} 索引构建失败")
+                print(f"✗ 数据集 {dataset_name} 索引构建失败 -> 集合: {target_collection}")
         else:
             skipped_count += 1
 
     print(f"Markdown 构建完成：成功 {built_count}，跳过 {skipped_count}")
-    try:
-        manager.get_collection_info()
-    except Exception:
-        pass
+    # 结尾不再访问单一 manager（因每个数据集使用独立 manager）
 
 def build_image_index(recreate: bool = False, only_datasets: list | None = None) -> None:
     """构建图片索引，可选重建集合与数据集过滤"""
     print("=" * 50)
     print("开始构建图片索引")
     image_cfg = config['indexing']['image']
-
-    manager = MilvusManager(collection_type="image")
-    if recreate:
-        print("重建 图片 集合: 先删除再创建")
-        manager.drop_collection()
-        manager._setup_collection()
 
     built_count = 0
     skipped_count = 0
@@ -157,6 +149,14 @@ def build_image_index(recreate: bool = False, only_datasets: list | None = None)
             continue
         if dataset_cfg.get('enabled', False):
             print(f"\n处理图片数据集: {dataset_name}")
+            # 为该数据集确定集合名（优先用数据集级别的 collection_name，否则回退到全局默认）
+            target_collection = dataset_cfg.get('collection_name', image_cfg.get('collections', 'images'))
+            # 为该数据集实例化独立的 MilvusManager，指向专属集合
+            manager = MilvusManager(collection_type="image", collection_name=target_collection)
+            if recreate:
+                print(f"重建 图片 集合: {target_collection} (先删除再创建)")
+                manager.drop_collection()
+                manager._setup_collection()
             parser = ImageParser(dataset_name=dataset_name)
             parsed_data = parser.parse_images()
             if not parsed_data:
@@ -179,17 +179,14 @@ def build_image_index(recreate: bool = False, only_datasets: list | None = None)
             success = insert_ok
             if success:
                 built_count += 1
-                print(f"✓ 数据集 {dataset_name} 索引构建成功")
+                print(f"✓ 数据集 {dataset_name} 索引构建成功 -> 集合: {target_collection}")
             else:
-                print(f"✗ 数据集 {dataset_name} 索引构建失败")
+                print(f"✗ 数据集 {dataset_name} 索引构建失败 -> 集合: {target_collection}")
         else:
             skipped_count += 1
 
     print(f"图片 构建完成：成功 {built_count}，跳过 {skipped_count}")
-    try:
-        manager.get_collection_info()
-    except Exception:
-        pass
+    # 结尾不再访问单一 manager（因每个数据集使用独立 manager）
 
 def test_retrieval_modes(db_name: str = "default", top_k: int = 3) -> None:
     """测试四种检索模式"""
@@ -447,6 +444,7 @@ def main():
     retrieval_group.add_argument("--test", action="store_true", help="执行基础检索测试")
     retrieval_group.add_argument("--test-modes", action="store_true", help="测试四种检索模式 (T2T, T2I, I2T, I2I)")
     retrieval_group.add_argument("--test-multidb", action="store_true", help="测试多数据库检索功能")
+    retrieval_group.add_argument("--multi-db-keys", type=str, nargs='*', help="多数据库键列表，如 normal md_thyroid")
     retrieval_group.add_argument("--test-caption", action="store_true", help="测试Caption检索图片功能")
     retrieval_group.add_argument("--benchmark", action="store_true", help="执行检索性能基准测试")
     
@@ -507,7 +505,22 @@ def main():
             # 多数据库检索测试
             if args.test_multidb:
                 query = args.query or "心脏超声诊断"
-                test_multi_database_retrieval(query=query, top_k=args.top_k)
+                if args.multi_db_keys and len(args.multi_db_keys) >= 2:
+                    # 走多数据库融合示例
+                    print("=" * 60)
+                    print("使用多数据库融合示例")
+                    print("=" * 60)
+                    try:
+                        manager = create_multi_database_manager()
+                        from UltrasoundRAG.retrival.multi_database_manager import create_retrieval_strategy
+                        strategy = create_retrieval_strategy(args.multi_db_keys, aggregation_method="weighted", max_results=args.top_k)
+                        result = manager.search_multiple_databases(strategy, "t2t", query, top_k=args.top_k)
+                        print(f"融合数据库: {args.multi_db_keys}")
+                        print(f"聚合结果数: {result.get('total_results', 0)}")
+                    except Exception as e:
+                        print(f"多数据库融合失败: {e}")
+                else:
+                    test_multi_database_retrieval(query=query, top_k=args.top_k)
             
             # Caption检索测试
             if args.test_caption:

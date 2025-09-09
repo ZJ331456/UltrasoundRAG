@@ -1,3 +1,9 @@
+"""
+图像解析器是图像解析器，将原始数据处理成对应的格式并存入原始的，milvus数据库
+功能：解析图片，生成图片向量
+使用模型：目前是fetalclip，后续会更新这个
+数据源：一般是存图文对之前需要处理一个索引的jsonl文件出来没通过读取这个文件，获取相关数据
+"""
 import json
 import os
 from typing import List, Dict, Tuple, Optional

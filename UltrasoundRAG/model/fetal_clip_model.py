@@ -16,8 +16,18 @@ from UltrasoundRAG.config.config import config
 
 class FetalCLIPModel:
     """
-    FetalCLIP模型加载和推理类
+    FetalCLIP模型加载和推理类 - 单例模式
     """
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls, model_path: str = None, config_path: str = None, device: Optional[torch.device] = None):
+        """
+        单例模式实现
+        """
+        if cls._instance is None:
+            cls._instance = super(FetalCLIPModel, cls).__new__(cls)
+        return cls._instance
     
     def __init__(self, 
                  model_path: str,
@@ -31,6 +41,10 @@ class FetalCLIPModel:
             config_path: 模型配置文件路径
             device: 计算设备
         """
+        # 如果已经初始化过，直接返回
+        if self._initialized:
+            return
+            
         self.model_path = model_path
         
         # 处理config_path，如果为None或不存在，使用默认路径
@@ -65,7 +79,28 @@ class FetalCLIPModel:
         
         self._load_model()
         
+        # 标记为已初始化
+        self._initialized = True
         print(f"FetalCLIP模型加载完成，设备: {self.device}")
+    
+    @classmethod
+    def get_instance(cls, model_path: str = None, config_path: str = None, device: Optional[torch.device] = None):
+        """
+        获取单例实例
+        """
+        if cls._instance is None:
+            if model_path is None or config_path is None:
+                raise ValueError("首次创建实例时必须提供model_path和config_path")
+            cls._instance = cls(model_path, config_path, device)
+        return cls._instance
+    
+    @classmethod
+    def reset_instance(cls):
+        """
+        重置单例实例（主要用于测试）
+        """
+        cls._instance = None
+        cls._initialized = False
     
     def _get_device(self) -> torch.device:
         """获取计算设备"""

@@ -17,6 +17,7 @@ class RetrievalResult:
     metadata: Dict[str, Any]
     score: float
     retrieval_type: str  # 'text_to_text', 'text_to_image', 'image_to_text', 'image_to_image', 'exact_caption_match', 'image_caption_to_text'
+    resource_collection: str = ""  # 数据来源的集合名称
     
     def __post_init__(self):
         """初始化后处理"""
