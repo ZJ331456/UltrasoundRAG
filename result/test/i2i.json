@@ -1,0 +1,70 @@
+{
+  "query_image": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+  "retrieval_type": "i2i",
+  "results": [
+    {
+      "doc_id": "7020",
+      "score": 1.0,
+      "content": "图1-8 血液中的极低回声，显示在高灵敏度仪器下血液内部的细微结构变化。",
+      "metadata": {
+        "image_path": "07_腹部超声/图片00008.jpg",
+        "caption": "图1-8 血液中的极低回声，显示在高灵敏度仪器下血液内部的细微结构变化。",
+        "source": "07_腹部超声.md",
+        "file_size": 0,
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_image",
+        "image_width": null,
+        "image_height": null,
+        "image_format": null,
+        "created_time": null,
+        "result_type": "image",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "image_to_image"
+    },
+    {
+      "doc_id": "7029",
+      "score": 0.42904630303382874,
+      "content": "图1-17 血流性质异常，CDFI显示湍流呈多彩镶嵌，提示狭窄或反流。",
+      "metadata": {
+        "image_path": "07_腹部超声/图片00017.jpg",
+        "caption": "图1-17 血流性质异常，CDFI显示湍流呈多彩镶嵌，提示狭窄或反流。",
+        "source": "07_腹部超声.md",
+        "file_size": 0,
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_image",
+        "image_width": null,
+        "image_height": null,
+        "image_format": null,
+        "created_time": null,
+        "result_type": "image",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "image_to_image"
+    },
+    {
+      "doc_id": "6969",
+      "score": 0.42311424016952515,
+      "content": "图10-59 颈部Ⅲ区正常淋巴结 淋巴结呈长椭圆形，L/S>2，边界清晰，淋巴门狭窄型，皮质为均匀低回声。",
+      "metadata": {
+        "image_path": "06_医学影像/图片00563.jpg",
+        "caption": "图10-59 颈部Ⅲ区正常淋巴结 淋巴结呈长椭圆形，L/S>2，边界清晰，淋巴门狭窄型，皮质为均匀低回声。",
+        "source": "06_医学影像.md",
+        "file_size": 0,
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_image",
+        "image_width": null,
+        "image_height": null,
+        "image_format": null,
+        "created_time": null,
+        "result_type": "image",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "image_to_image"
+    }
+  ],
+  "total_results": 3
+}

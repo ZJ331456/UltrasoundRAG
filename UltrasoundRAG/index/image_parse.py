@@ -98,16 +98,38 @@ class ImageParser:
             print(f"生成向量失败 {absolute_path}: {e}，使用零向量")
             return [0.0] * 768  # 使用零向量而非随机向量，避免引入噪声
     
+    def generate_caption_vector(self, caption: str) -> List[float]:
+        """
+        生成caption文本向量（使用 FetalCLIP 文本编码器）。
+        """
+        try:
+            # 使用 FetalCLIP 的文本编码器
+            tokens = self.fetal_model.tokenize_text([caption])
+            features = self.fetal_model.encode_text(tokens).cpu().numpy()
+            
+            # 转换为列表并确保维度为 768
+            vector = features[0].tolist()
+            if len(vector) != 768:
+                print(f"警告：caption向量维度为 {len(vector)}，期望 768，使用零向量")
+                return [0.0] * 768
+            
+            return vector
+            
+        except Exception as e:
+            print(f"生成caption向量失败: {e}，使用零向量")
+            return [0.0] * 768
+
     def parse_images(self) -> List[Dict]:
         """
         解析所有图片数据，返回包含所需字段的列表。
         如果图片不存在，跳过该条目。
         每个条目：{
             'id': int,
-            'relative_path': str,  # 相对路径
-            'caption': str,        # Caption
-            'folder_name': str,    # 文件夹名字（现在直接从 source 提取）
-            'image_vector': List[float]  # 图片向量
+            'image_path': str,  # 相对路径（统一命名）
+            'caption': str,     # Caption
+            'source': str,      # 来源（统一命名，原 folder_name）
+            'image_vector': List[float],
+            'caption_vector_clip_768': List[float]
         }
         """
         image_data = self.load_image_index()
@@ -115,20 +137,24 @@ class ImageParser:
         image_id = 1
         
         for item in tqdm(image_data, desc="处理图片"):
-            relative_path = item['image_path']
-            folder_name = item['source']  # 直接从 source 提取文件夹名称
+            image_path = item['image_path']
+            source = item['source']
             caption = item['caption']
-            image_vector = self.generate_image_vector(relative_path)
+            image_vector = self.generate_image_vector(image_path)
             
             if image_vector is None:
                 continue  # 跳过不存在的图片
             
+            # 生成caption向量
+            caption_vector = self.generate_caption_vector(caption)
+            
             parsed_data.append({
                 'id': image_id,
-                'relative_path': relative_path,
+                'image_path': image_path,
                 'caption': caption,
-                'folder_name': folder_name,
-                'image_vector': image_vector
+                'source': source,
+                'image_vector': image_vector,
+                'caption_vector_clip_768': caption_vector
             })
             image_id += 1
             
@@ -140,4 +166,4 @@ if __name__ == "__main__":
     parsed_images = parser.parse_images()
     print(f"解析了 {len(parsed_images)} 张图片")
     for img in parsed_images[:3]:  # 打印前3个
-        print(f"ID: {img['id']}, 路径: {img['relative_path']}, Caption: {img['caption'][:50]}...")
+        print(f"ID: {img['id']}, 路径: {img['image_path']}, Caption: {img['caption'][:50]}...")

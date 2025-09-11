@@ -52,3 +52,14 @@ transformers
 pyarrow==20.0.0
 
 python-multipart
+
+# 监控与结构化日志
+structlog==24.4.0
+psutil
+GPUtil
+
+# 服务器
+uvicorn
+
+# pdf解析
+pdfplumber

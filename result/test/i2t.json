@@ -1,0 +1,83 @@
+{
+  "query_image": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+  "retrieval_type": "i2t",
+  "results": [
+    {
+      "doc_id": "7722",
+      "score": 0.22826898097991943,
+      "content": "边界多清楚，少数可见周边有浅淡的低回声环绕。后方回声不衰减也不增强。",
+      "metadata": {
+        "title": "3.边缘及后方回声",
+        "md_file": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版.md",
+        "document_name": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版",
+        "chunk_index": 283,
+        "image_links": [],
+        "image_captions": [],
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_text",
+        "result_type": "text",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_md",
+      "retrieval_type": "image_to_text"
+    },
+    {
+      "doc_id": "1694",
+      "score": 0.2263605296611786,
+      "content": "眼眶横纹肌肉瘤自出生至成年人均可发生，但多见于10岁以下的儿童，平均7～8岁，是儿童时期最常见的眶内恶性肿瘤。进展迅速，如不及时治疗，多在1年内死亡。\n发展迅速的眼球突出和眶部肿物是该病最显著的特征。肿瘤常发生在眼眶上部，眼球突出伴向下移位，眼脸隆起，遮盖眼球。肿瘤位于肌锥内者，常发生眼球轴性突出。部分病人就诊时，眼球突出于脸裂外，结膜充血坏死，角膜暴露干燥。眼脸充血水肿，皮温升高。肿瘤迅速生长引起的继发改变，包括视力下降或丧失，眼球运动障碍，眼脸、结膜坏死感染及肿瘤压迫造成的眼底改变等。肿块可侵犯邻近副鼻窦和鼻腔。",
+      "metadata": {
+        "title": "【临床表现】",
+        "md_file": "02_浅表诊断.md",
+        "document_name": "02_浅表诊断",
+        "chunk_index": 181,
+        "image_links": [],
+        "image_captions": [],
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_text",
+        "result_type": "text",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_md",
+      "retrieval_type": "image_to_text"
+    },
+    {
+      "doc_id": "2421",
+      "score": 0.2228405922651291,
+      "content": "乳腺癌肉瘤好发于中老年妇女，病程可由数周至数十年不等。乳房内肿块质地硬，边界清，多数可活动，少数可与皮肤粘连，生长较快，常见腋窝淋巴结车\n![](https://cdn-mineru.openxlab.org.cn/extract/8c22f91b-a409-4c90-984b-4d27a7e0bb62/f5b0049689d722db00e22d971a2a40d17900efc3b12517d69a8e9cc97d1c3669.jpg)\n图6-196 乳腺血管肉瘤典型的大体形态",
+      "metadata": {
+        "title": "【临床表现】",
+        "md_file": "02_浅表诊断.md",
+        "document_name": "02_浅表诊断",
+        "chunk_index": 908,
+        "image_links": [],
+        "image_captions": [
+          "图6-196 乳腺血管肉瘤典型的大体形态"
+        ],
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_text",
+        "result_type": "text",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_md",
+      "retrieval_type": "image_to_text"
+    }
+  ],
+  "total_results": 3,
+  "matched_images": [
+    {
+      "doc_id": "1182",
+      "score": 1.0,
+      "content": "图6-196 乳腺血管肉瘤典型的大体形态",
+      "metadata": {
+        "image_path": "02_实用浅表/图片00694.jpg",
+        "caption": "图6-196 乳腺血管肉瘤典型的大体形态",
+        "source": "02_实用浅表.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    }
+  ],
+  "matched_image_count": 1
+}

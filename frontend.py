@@ -60,6 +60,12 @@ class FrontendConfig:
 # 全局配置实例
 config_instance = FrontendConfig()
 
+def _get(obj: Any, key: str, default: Any = None):
+    """统一安全取值，兼容 dict 与对象。"""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
 # 检索处理类
 class RetrievalHandler:
     """统一的检索处理类"""
@@ -85,10 +91,7 @@ class RetrievalHandler:
             raise ValueError(f"不支持的检索模式: {mode}")
         
         retriever = self.retrievers[mode]
-        if mode == 'caption':
-            return retriever.search_single_caption(query, top_k=top_k)
-        else:
-            return retriever.search(query, top_k=top_k)
+        return retriever.search(query, top_k=top_k)
     
     def _multi_db_search(self, mode: str, query: str, top_k: int, selected_dbs: List[str]):
         """多数据库检索"""
@@ -135,7 +138,7 @@ def get_retrievers(db_key: str):
             't2i': create_t2i_retriever(db_key, top_k=10),
             'i2t': create_i2t_retriever(db_key, top_k=10),
             'i2i': create_i2i_retriever(db_key, top_k=10),
-            'caption': create_caption_retriever(db_key, "hybrid_match")
+            'caption': create_caption_retriever(db_key)
         }
         return retrievers
     except Exception as e:
@@ -151,29 +154,43 @@ def display_text_results(results: List[Dict], title: str = "文本结果"):
     st.subheader(f"{title} ({len(results)} 个)")
     
     for i, result in enumerate(results):
-        with st.expander(f"结果 {i+1} (分数: {getattr(result, 'score', 0):.4f})"):
+        score = _get(result, 'score', 0.0) or 0.0
+        with st.expander(f"结果 {i+1} (分数: {float(score):.4f})"):
             col1, col2 = st.columns([3, 1])
             
             with col1:
                 st.write("**内容:**")
-                content = getattr(result, 'content', '')
+                content = _get(result, 'content', '') or ''
                 st.write(content[:500] + "..." if len(content) > 500 else content)
                 
                 st.write("**元数据:**")
-                metadata = getattr(result, 'metadata', {})
-                for key, value in metadata.items():
-                    if key not in ['relative_path', 'file_size']:
+                metadata = _get(result, 'metadata', {}) or {}
+                # 先专门展示图片相关聚合字段
+                if isinstance(metadata, dict):
+                    img_paths = metadata.get('image_paths')
+                    if img_paths:
+                        st.write("- image_paths:")
+                        for p in (img_paths if isinstance(img_paths, list) else [img_paths]):
+                            st.code(str(p))
+                    img_caps = metadata.get('image_captions')
+                    if img_caps:
+                        st.write("- image_captions:")
+                        for c in (img_caps if isinstance(img_caps, list) else [img_caps]):
+                            st.write(f"  • {str(c)[:120]}{'...' if len(str(c))>120 else ''}")
+
+                for key, value in (metadata.items() if isinstance(metadata, dict) else []):
+                    if key not in ['relative_path', 'image_path', 'file_size', 'image_paths', 'image_captions']:
                         st.write(f"- {key}: {value}")
                 
                 # 显示资源集合信息
-                resource_collection = getattr(result, 'resource_collection', '')
+                resource_collection = _get(result, 'resource_collection', '')
                 if resource_collection:
                     st.write(f"- 数据来源: {resource_collection}")
             
             with col2:
-                if 'relative_path' in getattr(result, 'metadata', {}):
+                if isinstance(metadata, dict) and ('image_path' in metadata or 'relative_path' in metadata):
                     st.write("**文件路径:**")
-                    st.code(getattr(result, 'metadata', {}).get('relative_path', ''))
+                    st.code(metadata.get('image_path', metadata.get('relative_path', '')))
 
 # 输入验证函数
 def validate_query(query: str, mode: str) -> tuple[bool, str]:
@@ -268,30 +285,36 @@ def display_image_results(results: List[Dict], title: str = "图片结果", base
         col_idx = i % 3
         with cols[col_idx]:
             with st.container():
-                st.write(f"**结果 {i+1}** (分数: {getattr(result, 'score', 0):.4f})")
+                score = _get(result, 'score', 0.0) or 0.0
+                st.write(f"**结果 {i+1}** (分数: {float(score):.4f})")
                 
                 # 显示图片路径信息
-                metadata = getattr(result, 'metadata', {})
-                rel_path = metadata.get('relative_path')
-                if rel_path:
-                    resolved = resolve_image_path_cached(rel_path, base_image_root)
+                metadata = _get(result, 'metadata', {}) or {}
+                img_path = None
+                if isinstance(metadata, dict):
+                    img_path = metadata.get('image_path') or metadata.get('relative_path')
+                # 顶层兜底（某些旧结果可能把路径放在顶层）
+                img_path = img_path or _get(result, 'image_path') or _get(result, 'relative_path')
+                if img_path:
+                    resolved = resolve_image_path_cached(img_path, base_image_root)
                     if resolved and os.path.isfile(resolved):
                         display_image_with_fallback(resolved, os.path.basename(resolved))
                     else:
-                        st.write(f"路径: {rel_path}")
+                        st.write(f"路径: {img_path}")
                 
-                # 显示caption
-                content = getattr(result, 'content', '')
+                # 显示caption（优先元数据 caption，其次顶层 content 兜底）
+                md_caption = metadata.get('caption') if isinstance(metadata, dict) else None
+                content = md_caption or (_get(result, 'content', '') or '')
                 if content:
                     st.write(f"描述: {content[:100]}{'...' if len(content) > 100 else ''}")
                 
                 # 显示其他元数据
-                for key, value in metadata.items():
+                for key, value in (metadata.items() if isinstance(metadata, dict) else []):
                     if key not in ['relative_path', 'file_size']:
                         st.write(f"- {key}: {value}")
                 
                 # 显示资源集合信息
-                resource_collection = getattr(result, 'resource_collection', '')
+                resource_collection = _get(result, 'resource_collection', '')
                 if resource_collection:
                     st.write(f"- 数据来源: {resource_collection}")
 
@@ -318,12 +341,13 @@ def display_caption_results(results: Dict, title: str = "Caption检索结果"):
     st.write(f"**找到 {results['total_results']} 个匹配图片**")
     
     for i, result in enumerate(results.get('results', [])[:5]):  # 最多显示5个
-        with st.expander(f"图片 {i+1} (分数: {getattr(result, 'score', 0):.4f})"):
+        score = _get(result, 'score', 0.0) or 0.0
+        with st.expander(f"图片 {i+1} (分数: {float(score):.4f})"):
             col1, col2 = st.columns([2, 1])
             
             with col1:
                 st.write("**图片信息:**")
-                metadata = getattr(result, 'metadata', {})
+                metadata = _get(result, 'metadata', {}) or {}
                 if 'relative_path' in metadata:
                     st.write(f"路径: {metadata['relative_path']}")
                 if 'caption' in metadata:
@@ -333,12 +357,12 @@ def display_caption_results(results: Dict, title: str = "Caption检索结果"):
             
             with col2:
                 st.write("**匹配详情:**")
-                st.write(f"分数: {getattr(result, 'score', 0):.4f}")
+                st.write(f"分数: {float(score):.4f}")
                 if 'matched_variant' in metadata:
                     st.write(f"匹配变体: {metadata['matched_variant']}")
                 
                 # 显示资源集合信息
-                resource_collection = getattr(result, 'resource_collection', '')
+                resource_collection = _get(result, 'resource_collection', '')
                 if resource_collection:
                     st.write(f"数据来源: {resource_collection}")
 
@@ -350,7 +374,7 @@ def render_sidebar():
     retrieval_mode = st.selectbox(
         "选择检索模式",
         ["T2T (文本→文本)", "T2I (文本→图片)", "I2T (图片→文本)", 
-         "I2I (图片→图片)", "Caption (标题→图片)", "混合检索"],
+         "I2I (图片→图片)", "混合检索"],
         help="选择要测试的检索模式"
     )
     
@@ -548,89 +572,48 @@ def render_i2i_interface(retrieval_handler: RetrievalHandler, top_k: int, is_mul
     else:
         st.info("请上传一张图片进行检索")
 
-def render_caption_interface(retrieval_handler: RetrievalHandler, top_k: int, is_multi: bool, selected_dbs: List[str], base_image_root: str):
-    """渲染标题到图片检索界面"""
-    st.header("🏷️ 标题到图片检索")
-    
-    # 单个caption检索
-    st.subheader("单个Caption检索")
-    caption = st.text_input("输入图片标题", placeholder="例如：图2-3 心脏超声横切面")
-    
-    if st.button("🔍 检索单个Caption", type="primary"):
-        is_valid, error_msg = validate_query(caption, "caption")
-        if not is_valid:
-            st.warning(error_msg)
+def _collect_and_display_linked_images_from_text(
+    t2t_items: List[Dict],
+    selected_dbs: List[str],
+    is_multi: bool,
+    top_k: int,
+    base_image_root: str,
+):
+    """从文本结果元数据中发现 image_captions，并按需触发 caption 匹配以展示关联图片。"""
+    try:
+        # 选择 caption 检索器
+        if is_multi and selected_dbs:
+            single_retrievers = get_retrievers(selected_dbs[0])
+            caption_retriever = single_retrievers.get('caption') if single_retrievers else None
+        else:
+            caption_retriever = get_retrievers(selected_dbs[0]).get('caption') if selected_dbs else None
+
+        if not caption_retriever:
             return
-        
-        with st.spinner("正在检索..."):
-            start_time = time.time()
-            try:
-                if is_multi:
-                    result = retrieval_handler.execute_search("t2i", caption, top_k, is_multi, selected_dbs)
-                else:
-                    result = retrieval_handler.execute_search("caption", caption, top_k, is_multi, selected_dbs)
-                
-                end_time = time.time()
-                
-                st.success(f"检索完成！耗时 {end_time - start_time:.3f} 秒")
-                result_items = get_result_items(result, is_multi)
-                log_search_operation("caption", caption, end_time - start_time, len(result_items))
-                
-                # 多库时复用图片结果渲染
-                if is_multi:
-                    display_image_results(result_items, "Caption检索结果", base_image_root)
-                else:
-                    display_caption_results(result, "Caption检索结果")
-            except RetrievalError as e:
-                st.error(str(e))
-            except Exception as e:
-                logger.error(f"Caption检索异常: {e}")
-                st.error("检索过程中发生错误，请稍后重试")
-    
-    st.markdown("---")
-    
-    # 从文本块提取caption检索
-    st.subheader("从文本块提取Caption检索")
-    text_chunk = st.text_area("输入包含图片引用的文本", 
-                            placeholder="例如：图2-1显示心脏四腔心切面，图2-2为心脏短轴切面", 
-                            height=100)
-    
-    if st.button("🔍 提取并检索", type="secondary"):
-        is_valid, error_msg = validate_query(text_chunk, "text_chunk")
-        if not is_valid:
-            st.warning(error_msg)
-            return
-        
-        with st.spinner("正在提取Caption并检索..."):
-            start_time = time.time()
-            try:
-                if not is_multi:
-                    result = retrieval_handler.retrievers['caption'].search_from_text_chunk(text_chunk, top_k=top_k)
-                else:
-                    st.warning("多数据库模式下暂不支持文本块提取功能")
-                    return
-                
-                end_time = time.time()
-                
-                st.success(f"检索完成！耗时 {end_time - start_time:.3f} 秒")
-                
-                # 显示提取的captions
-                extracted_captions = result.get('extracted_captions', [])
-                if extracted_captions:
-                    st.write(f"**提取到的Caption:** {', '.join(extracted_captions)}")
-                
-                # 显示检索结果
-                display_image_results(result.get('results', []), "匹配的图片结果", base_image_root)
-            except RetrievalError as e:
-                st.error(str(e))
-            except Exception as e:
-                logger.error(f"文本块Caption检索异常: {e}")
-                st.error("检索过程中发生错误，请稍后重试")
+
+        any_shown = False
+        for idx, item in enumerate(t2t_items or []):
+            metadata = _get(item, 'metadata', {}) or {}
+            image_captions = metadata.get('image_captions') if isinstance(metadata, dict) else None
+            if not image_captions:
+                continue
+            any_shown = True
+            with st.expander(f"来源文本 {idx+1} 的关联图片"):
+                res = caption_retriever.search_from_md_image_captions(
+                    image_captions,
+                    top_k_per_caption=max(1, top_k // 2),
+                    use_like=True,
+                )
+                display_image_results(res.get('results', []), "关联图片结果", base_image_root)
+        if not any_shown:
+            st.info("文本结果中未发现可用的图片标题字段")
+    except Exception as e:
+        logger.warning(f"关联图片展示失败: {e}")
 
 def render_hybrid_interface(retrieval_handler: RetrievalHandler, top_k: int, is_multi: bool, selected_dbs: List[str], base_image_root: str):
     """渲染混合检索界面"""
     st.header("🔄 混合检索")
-    st.info("混合检索将同时执行多种检索模式并融合结果")
+    st.info("混合检索执行：T2T、T2I、I2T、I2I；若文本结果含图片标题，则按需触发 Caption 匹配展示关联图片。")
     
     query = st.text_area("输入查询文本", placeholder="例如：心脏超声检查", height=100)
     
@@ -644,33 +627,62 @@ def render_hybrid_interface(retrieval_handler: RetrievalHandler, top_k: int, is_
             start_time = time.time()
             
             try:
-                # 执行多种检索
-                if not is_multi:
-                    t2t_result = retrieval_handler.execute_search("t2t", query, top_k//2, False, selected_dbs)
-                    t2i_result = retrieval_handler.execute_search("t2i", query, top_k//2, False, selected_dbs)
-                    caption_result = retrieval_handler.execute_search("caption", query, top_k//2, False, selected_dbs)
-                else:
-                    t2t_result = retrieval_handler.execute_search("t2t", query, top_k//2, True, selected_dbs)
-                    t2i_result = retrieval_handler.execute_search("t2i", query, top_k//2, True, selected_dbs)
-                    caption_result = retrieval_handler.execute_search("t2i", query, top_k//2, True, selected_dbs)
+                # 执行核心四类检索（此处示例仅执行 t2t/t2i；i2t/i2i 需图片输入，这里跳过）
+                t2t_result = retrieval_handler.execute_search("t2t", query, max(1, top_k//2), is_multi, selected_dbs)
+                t2i_result = retrieval_handler.execute_search("t2i", query, max(1, top_k//2), is_multi, selected_dbs)
                 
                 end_time = time.time()
                 
                 st.success(f"混合检索完成！耗时 {end_time - start_time:.3f} 秒")
                 log_search_operation("hybrid", query, end_time - start_time, 0)
                 
-                # 显示各种结果
-                col1, col2 = st.columns(2)
+                # 显示所有检索结果
+                st.subheader("📊 检索结果汇总")
+                
+                # 创建三列布局
+                col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    display_text_results(get_result_items(t2t_result, is_multi), "文本检索结果")
+                    st.write("**📝 文本检索结果**")
+                    t2t_items = get_result_items(t2t_result, is_multi)
+                    if t2t_items:
+                        display_text_results(t2t_items[:3], "文本检索结果")  # 只显示前3个
+                    else:
+                        st.info("无文本检索结果")
                 
                 with col2:
-                    display_image_results(get_result_items(t2i_result, is_multi), "图片检索结果", base_image_root)
+                    st.write("**🖼️ 图片检索结果**")
+                    t2i_items = get_result_items(t2i_result, is_multi)
+                    if t2i_items:
+                        display_image_results(t2i_items[:3], "图片检索结果", base_image_root)  # 只显示前3个
+                    else:
+                        st.info("无图片检索结果")
                 
-                # Caption检索结果
-                if not is_multi and caption_result.get('total_results', 0) > 0:
-                    display_caption_results(caption_result, "Caption检索结果")
+                with col3:
+                    st.write("**📎 文本关联图片**")
+                    _collect_and_display_linked_images_from_text(
+                        t2t_items=t2t_items,
+                        selected_dbs=selected_dbs,
+                        is_multi=is_multi,
+                        top_k=top_k,
+                        base_image_root=base_image_root,
+                    )
+                
+                # 显示统计信息
+                st.markdown("---")
+                st.subheader("📈 检索统计")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("文本结果", len(get_result_items(t2t_result, is_multi)))
+                with col2:
+                    st.metric("图片结果", len(get_result_items(t2i_result, is_multi)))
+                with col3:
+                    st.metric("关联图片", "N/A")
+                with col4:
+                    total_results = len(get_result_items(t2t_result, is_multi)) + len(get_result_items(t2i_result, is_multi))
+                    st.metric("总结果数", total_results)
+                    
             except RetrievalError as e:
                 st.error(str(e))
             except Exception as e:
@@ -705,8 +717,6 @@ def main():
         render_i2t_interface(retrieval_handler, top_k, is_multi, selected_dbs)
     elif retrieval_mode == "I2I (图片→图片)":
         render_i2i_interface(retrieval_handler, top_k, is_multi, selected_dbs, base_image_root)
-    elif retrieval_mode == "Caption (标题→图片)":
-        render_caption_interface(retrieval_handler, top_k, is_multi, selected_dbs, base_image_root)
     elif retrieval_mode == "混合检索":
         render_hybrid_interface(retrieval_handler, top_k, is_multi, selected_dbs, base_image_root)
     

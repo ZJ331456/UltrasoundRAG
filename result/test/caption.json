@@ -1,0 +1,40 @@
+{
+  "captions": [
+    "图6-6 大血管短轴切面 （主动脉瓣水平）；图6-6 大血管短轴切面 （主动脉瓣水平）"
+  ],
+  "normalized_candidates": [
+    "大血管短轴切面 （主动脉瓣水平）",
+    "图6-6 大血管短轴切面 （主动脉瓣水平）"
+  ],
+  "results": [
+    {
+      "doc_id": "46",
+      "score": 1.0,
+      "content": "图6-6 大血管短轴切面 （主动脉瓣水平） A.收缩期",
+      "metadata": {
+        "image_path": "01_超声标准切面/图片00046.jpg",
+        "caption": "图6-6 大血管短轴切面 （主动脉瓣水平） A.收缩期",
+        "source": "01_超声标准切面.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    },
+    {
+      "doc_id": "47",
+      "score": 1.0,
+      "content": "图6-6 大血管短轴切面 （主动脉瓣水平） B.舒张期",
+      "metadata": {
+        "image_path": "01_超声标准切面/图片00047.jpg",
+        "caption": "图6-6 大血管短轴切面 （主动脉瓣水平） B.舒张期",
+        "source": "01_超声标准切面.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    }
+  ],
+  "total_results": 2
+}

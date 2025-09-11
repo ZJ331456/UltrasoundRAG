@@ -29,11 +29,8 @@ from torchvision import transforms
 from UltrasoundRAG.utils.logger import setup_logger
 from UltrasoundRAG.retrival.data_structures import RetrievalResult
 
-# 在导入任何模块之前设置jieba缓存目录
-import os
-cache_dir = os.path.expanduser("~/.cache/jieba")
-os.makedirs(cache_dir, exist_ok=True)
-os.environ['JIEBA_CACHE_DIR'] = cache_dir
+# 统一遵循 UltrasoundRAG/__init__.py 的环境设置，确保缓存/临时目录一致
+import UltrasoundRAG  # noqa: F401
 
 try:
     import jieba

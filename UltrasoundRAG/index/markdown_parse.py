@@ -66,12 +66,12 @@ class MarkdownParser:
                 chunk['md_file'] = os.path.relpath(md_file, self.base_md_path)
                 chunk['document_name'] = os.path.basename(md_file).replace('.md', '')
                 
-                # 处理图片信息
+                # 处理图片信息（统一命名：image_paths / image_captions）
                 if chunk.get('origin_image_caption'):
-                    chunk['image_links'] = [chunk.get('image_url', '')]
+                    chunk['image_paths'] = [chunk.get('image_url', '')]
                     chunk['image_captions'] = [chunk.get('origin_image_caption', '')]
                 else:
-                    chunk['image_links'] = []
+                    chunk['image_paths'] = []
                     chunk['image_captions'] = []
                 
                 chunk_id += 1

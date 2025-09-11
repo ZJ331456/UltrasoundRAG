@@ -4,6 +4,7 @@ milvus:
     db_name: "ultrasound_vector"
     md_collection_name: "thyroidagent"
     image_collection_name: "images"
+    pdf_collection_name: "thesis_papers"
 # 索引创建的总配置
 indexing:
   db_name: "ultrasound_vector"
@@ -14,6 +15,12 @@ indexing:
 
   # Markdown 解析配置
   markdown_parse:
+    max_chunk_size: 1500 #单个chunk的大小 
+    overlap_ratio: 0.15  #重叠窗口比例，15%可以保持较好的语义连续性
+    min_chunk_size: 100  #最小chunk大小，避免过短的无意义片段
+
+  # PDF 解析配置
+  pdf_parse:
     max_chunk_size: 1500 #单个chunk的大小 
     overlap_ratio: 0.15  #重叠窗口比例，15%可以保持较好的语义连续性
     min_chunk_size: 100  #最小chunk大小，避免过短的无意义片段 
@@ -29,7 +36,7 @@ indexing:
       ultrasound_guides:
         enabled: false
         base_md_path: ""
-        collection_name: "markdown_guides"
+        collection_name: "guides_md"
         description: "超声指南Markdown数据集"
       thyroidagent:
         enabled: true
@@ -49,8 +56,17 @@ indexing:
         enabled: false
         base_image_path: ""
         image_index_path: ""
-        collection_name: "ultrasound_clinical_images"
+        collection_name: "ultrasound_clinical_image"
         description: "临床超声图片数据集"
+
+  # PDF 数据集配置
+  pdf:
+    datasets:
+      thesis_papers:
+        enabled: true
+        base_pdf_path: "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/thesis"
+        collection_name: "thesis_papers"
+        description: "学术论文PDF数据集"
 
 # Embedding 模型配置
 embedding:
@@ -79,16 +95,25 @@ rerank:
 retriever:
   # 基础检索配置
   top_k: 10  # 检索返回的文档数量
-  similarity_threshold: 0.5  # 相似度阈值
   enable_cache: true  # 是否启用缓存
+  
+  # 向量搜索通用配置
+  vector_search:
+    search_params:
+      nprobe: 16
+      metric_type: "COSINE"
+      params:
+        ef: 200
+    batch_size: 64
+    enable_parallel: true
   
   # 多数据库和集合配置
   databases:
     default:
       db_name: "ultrasound_vector"
       collections:
-        text: "markdown_index"
-        image: "image_index"
+        text: "normal_book_md"
+        image: "normal_book_image"
       type: "general"
       priority: 1
       enabled: true
@@ -99,17 +124,17 @@ retriever:
     normal:
       db_name: "ultrasound_vector"
       collections:
-        text: "markdown_index"
-        image: "image_index"
+        text: "normal_book_md"
+        image: "normal_book_image"
       type: "general"
       priority: 1
       enabled: true
-      description: "书籍文本+图片（normal）"
+      description: "通用的书籍文本+图片（normal）"
       tags: ["book"]
     md_thyroid:
       db_name: "ultrasound_vector"
       collections:
-        text: "thyroidagent"
+        text: "thyroid_agent_md"
         image: ""
       type: "general"
       priority: 1
@@ -128,6 +153,7 @@ retriever:
     # 文本到文本检索（T2T）
     t2t:
       enabled: true
+      similarity_threshold: 0.2  # T2T专用阈值
       strategy: "fusion"  # "basic" 或 "fusion"
       fusion_config:
         text_search_ratio: 0.7
@@ -139,16 +165,24 @@ retriever:
     # 文本到图片检索（T2I）
     t2i:
       enabled: true
+      similarity_threshold: 0.01  # T2I专用阈值，降低以提升召回率
       use_clip_text_encoder: true  # 使用CLIP文本编码器
+      enable_fuzzy_matching: true  # 启用模糊匹配
+      use_caption_boost: true      # 利用caption向量提升匹配
+      vector_fusion_weights:
+        image_vector: 0.7
+        caption_vector: 0.3
       
     # 图片到文本检索（I2T）
     i2t:
       enabled: true
+      similarity_threshold: 0.15  # I2T专用阈值
       return_caption_as_text: true  # 将caption作为文本结果返回
       
     # 图片到图片检索（I2I）
     i2i:
       enabled: true
+      similarity_threshold: 0.2   # I2I专用阈值
       include_metadata: true  # 包含图片元数据
   
   # Caption检索图片模块
@@ -165,6 +199,24 @@ retriever:
       text: 0.6
       image: 0.4
     enable_multimodal_fusion: true
+
+  # 图片caption向量融合权重（仅 CLIP）
+  caption_vector_fusion:
+    image_weight: 0.7
+    caption_clip_weight: 0.3
+  
+  # 模型管理配置
+  model_management:
+    lazy_loading: true
+    model_cache_size: 5
+    enable_model_sharing: true
+    warmup_models: ["fetal_clip", "embedding"]
+    
+  # 内存管理配置
+  memory_management:
+    torch_cuda_empty_cache: true
+    max_model_memory_mb: 8192
+    enable_gradient_checkpointing: true
 
 # 答案生成配置
 generator:

@@ -148,6 +148,12 @@ class FetalCLIPModel:
         
         # 移动到指定设备
         self.model.to(self.device)
+        # 在GPU上使用半精度以降低显存占用
+        if torch.cuda.is_available() and self.device.type == 'cuda':
+            try:
+                self.model.half()
+            except Exception:
+                pass
         self.model.eval()
         
         print(f"FetalCLIP模型架构: {arch_name}")
@@ -160,7 +166,11 @@ class FetalCLIPModel:
         print(f"加载模型权重: {self.model_path}")
         
         # 加载权重
-        checkpoint = torch.load(self.model_path, map_location=self.device)
+        try:
+            checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=True)
+        except TypeError:
+            # 兼容旧版 PyTorch，无 weights_only 参数
+            checkpoint = torch.load(self.model_path, map_location=self.device)
         
         # 处理不同的权重格式
         if isinstance(checkpoint, dict):
@@ -202,9 +212,12 @@ class FetalCLIPModel:
             image_features: 归一化的图像特征 [B, D]
         """
         with torch.no_grad():
-            if images.device != self.device:
-                images = images.to(self.device)
-            
+            # 统一到模型设备与精度
+            target_dtype = next(self.model.parameters()).dtype if next(self.model.parameters()).is_floating_point() else torch.float16 if self.device.type == 'cuda' else torch.float32
+            if not isinstance(images, torch.Tensor):
+                images = torch.as_tensor(images)
+            images = images.to(self.device, dtype=target_dtype, non_blocking=True)
+
             image_features = self.model.encode_image(images)
             image_features = F.normalize(image_features, dim=-1)
             
@@ -221,9 +234,13 @@ class FetalCLIPModel:
             text_features: 归一化的文本特征 [B, D]
         """
         with torch.no_grad():
-            if text_tokens.device != self.device:
-                text_tokens = text_tokens.to(self.device)
-            
+            # 统一到模型设备（token必须为 long）
+            if not isinstance(text_tokens, torch.Tensor):
+                text_tokens = torch.as_tensor(text_tokens, dtype=torch.long)
+            if text_tokens.dtype != torch.long:
+                text_tokens = text_tokens.to(dtype=torch.long)
+            text_tokens = text_tokens.to(self.device, non_blocking=True)
+
             text_features = self.model.encode_text(text_tokens)
             text_features = F.normalize(text_features, dim=-1)
             

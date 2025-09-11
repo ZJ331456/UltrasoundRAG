@@ -1,17 +1,21 @@
-"""重排序模块 - 新架构版本
-提供规则重排序和模型重排序功能，支持Milvus检索结果
+"""增强重排序模块 - 集成多模态功能
+提供规则重排序、模型重排序和多模态重排序功能，支持Milvus检索结果
 
 主要功能：
 1. 基于规则的重排序（词汇重叠、长度惩罚、医学术语奖励等）
 2. 基于本地重排序模型（如CrossEncoder）的重排序
 3. 智能重排序策略选择
+4. 多模态相关性计算和跨模态语义对齐
+5. 混合重排序策略
 """
 
 import time
 import re
 import os
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from typing import List, Dict, Any, Optional, Tuple, Union
+from dataclasses import dataclass, field
+from enum import Enum
+import numpy as np
 
 from UltrasoundRAG.utils.logger import setup_logger
 from UltrasoundRAG.retrival.data_structures import RetrievalResult
@@ -21,9 +25,21 @@ from sentence_transformers import CrossEncoder
 import torch
 CROSS_ENCODER_AVAILABLE = True
 
+# 多模态模型导入
+try:
+    from UltrasoundRAG.model.model_manager import get_fetal_clip_model
+    MULTIMODAL_AVAILABLE = True
+except ImportError:
+    MULTIMODAL_AVAILABLE = False
+
 
 # 尝试导入jieba用于中文分词
 try:
+    # 统一使用项目根目录设置的缓存目录
+    import os as _os
+    _cache_dir = _os.environ.get('JIEBA_CACHE_DIR')
+    if _cache_dir:
+        _os.makedirs(_cache_dir, exist_ok=True)
     import jieba
     jieba.setLogLevel(20)  # 设置为WARNING级别，减少日志输出
 except ImportError:
@@ -83,6 +99,15 @@ class BaseReranker:
         """生成缓存键"""
         result_ids = [r.doc_id for r in results[:10]]  # 只使用前10个结果ID
         return f"{self.__class__.__name__}_{hash(query)}_{hash(tuple(result_ids))}"
+
+    def _update_stats(self, processing_time: float) -> None:
+        """更新统计信息（在基类提供，子类直接复用）"""
+        self.stats['total_reranks'] += 1
+        total_reranks = self.stats['total_reranks']
+        current_avg = self.stats['avg_processing_time']
+        self.stats['avg_processing_time'] = (
+            current_avg * (total_reranks - 1) + processing_time
+        ) / total_reranks
 
 
 class RuleBasedReranker(BaseReranker):
@@ -157,7 +182,7 @@ class RuleBasedReranker(BaseReranker):
         
         # 缓存结果
         if self.cache:
-            self.cache.put(final_results, cache_key)
+            self.cache.put(final_results, key=cache_key)
         
         # 更新统计
         processing_time = time.time() - start_time
@@ -269,13 +294,18 @@ class ModelBasedReranker(BaseReranker):
     def _load_model(self):
         """加载CrossEncoder模型"""
         try:
-            device = 'cuda' if (torch is not None and torch.cuda.is_available()) else 'cpu'
-            self.model = CrossEncoder(
-                self.model_path,
-                device=device,
-                trust_remote_code=True,
-                automodel_args={"torch_dtype": "auto"}
-            )
+            from UltrasoundRAG.model.singleton_models import global_models
+            
+            def create_cross_encoder():
+                device = 'cuda' if (torch is not None and torch.cuda.is_available()) else 'cpu'
+                return CrossEncoder(
+                    self.model_path,
+                    device=device,
+                    trust_remote_code=True,
+                    model_kwargs={"torch_dtype": "auto"}
+                )
+            
+            self.model = global_models.get_or_create_model("cross_encoder", create_cross_encoder)
             self.logger.info(f"成功加载重排序模型: {self.model_path}")
         except Exception as e:
             self.logger.error(f"加载模型失败: {e}")
@@ -440,3 +470,379 @@ def create_rerank_manager(algorithm: str = "rule_based",
         **kwargs
     )
     return SimpleRerankManager(config, model_path)
+
+
+# === 多模态重排序功能 ===
+
+class RerankMode(Enum):
+    """重排序模式"""
+    TEXT_ONLY = "text_only"           # 仅文本重排序
+    IMAGE_ONLY = "image_only"         # 仅图像重排序
+    MULTIMODAL = "multimodal"         # 多模态重排序
+    HYBRID = "hybrid"                 # 混合重排序
+
+
+@dataclass
+class MultimodalRerankConfig:
+    """多模态重排序配置"""
+    mode: RerankMode = RerankMode.MULTIMODAL
+    top_k: int = 20
+    
+    # 权重配置
+    semantic_weight: float = 0.6      # 语义相关性权重
+    visual_weight: float = 0.3        # 视觉相关性权重
+    textual_weight: float = 0.4       # 文本相关性权重
+    cross_modal_weight: float = 0.3   # 跨模态相关性权重
+    
+    # 质量控制
+    min_score_threshold: float = 0.1
+    diversity_penalty: float = 0.05   # 多样性惩罚
+    
+    # 性能配置
+    enable_caching: bool = True
+    batch_size: int = 8
+    max_candidates: int = 50
+    
+    # 融合旧的重排序配置
+    enable_rule_based: bool = True
+    enable_model_based: bool = True
+    rule_weight: float = 0.3
+    model_weight: float = 0.4
+
+
+@dataclass
+class MultimodalRerankResult:
+    """多模态重排序结果"""
+    results: List[RetrievalResult]
+    strategy_used: str
+    processing_time: float
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class MultimodalReranker:
+    """多模态重排序器 - 集成传统和多模态重排序"""
+    
+    def __init__(self, config: Optional[MultimodalRerankConfig] = None):
+        self.config = config or MultimodalRerankConfig()
+        self.logger = setup_logger(self.__class__.__name__)
+        
+        # 初始化传统重排序组件
+        self._init_traditional_rerankers()
+        
+        # 初始化多模态组件
+        self._init_multimodal_components()
+        
+        # 缓存
+        if self.config.enable_caching:
+            self.cache = LRUCache(max_size=1000, max_memory_mb=256, ttl_seconds=3600)
+        else:
+            self.cache = None
+        
+        # 性能统计
+        self.stats = {
+            'total_reranks': 0,
+            'mode_usage': {mode.value: 0 for mode in RerankMode},
+            'avg_processing_time': 0.0,
+            'cache_hits': 0
+        }
+    
+    def _init_traditional_rerankers(self):
+        """初始化传统重排序器"""
+        # 规则重排序器
+        if self.config.enable_rule_based:
+            rule_config = RerankConfig(
+                algorithm="rule_based",
+                max_candidates=self.config.max_candidates,
+                final_count=self.config.top_k
+            )
+            self.rule_reranker = RuleBasedReranker(rule_config)
+        
+        # 模型重排序器
+        if self.config.enable_model_based and CROSS_ENCODER_AVAILABLE:
+            # 从全局配置获取模型路径
+            from UltrasoundRAG.config import config
+            model_path = config.get('rerank', {}).get('model_path', '/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/models/jina-reranker-v2-base-multilingual')
+            
+            model_config = RerankConfig(
+                algorithm="model_based",
+                max_candidates=self.config.max_candidates,
+                final_count=self.config.top_k
+            )
+            self.model_reranker = ModelBasedReranker(model_config, model_path=model_path)
+    
+    def _init_multimodal_components(self):
+        """初始化多模态组件"""
+        if MULTIMODAL_AVAILABLE:
+            try:
+                from UltrasoundRAG.model.singleton_models import get_shared_fetal_clip
+                self.clip_model = get_shared_fetal_clip()
+                self.multimodal_enabled = True
+                self.logger.info("多模态CLIP模型初始化成功")
+            except Exception as e:
+                self.logger.warning(f"多模态CLIP模型初始化失败: {e}")
+                self.multimodal_enabled = False
+        else:
+            self.multimodal_enabled = False
+            self.logger.warning("多模态功能不可用")
+    
+    def rerank_results(self, query: str, results: List[RetrievalResult], 
+                      mode: Optional[RerankMode] = None) -> List[RetrievalResult]:
+        """
+        多模态重排序主接口
+        
+        Args:
+            query: 查询文本
+            results: 检索结果列表
+            mode: 重排序模式，如果为None则自动选择
+            
+        Returns:
+            重排序后的结果列表
+        """
+        start_time = time.time()
+        
+        if not results:
+            return results
+        
+        # 缓存检查
+        if self.cache:
+            cache_key = f"{hash(query)}_{hash(tuple(r.doc_id for r in results))}"
+            cached_result = self.cache.get(cache_key)
+            if cached_result is not None:
+                self.stats['cache_hits'] += 1
+                return cached_result
+        
+        # 自动选择模式
+        if mode is None:
+            mode = self._auto_select_mode(query, results)
+        
+        # 执行重排序
+        if mode == RerankMode.MULTIMODAL and self.multimodal_enabled:
+            reranked_results = self._multimodal_rerank(query, results)
+        elif mode == RerankMode.HYBRID:
+            reranked_results = self._hybrid_rerank(query, results)
+        elif mode == RerankMode.TEXT_ONLY:
+            reranked_results = self._text_only_rerank(query, results)
+        else:
+            # 默认使用混合模式
+            reranked_results = self._hybrid_rerank(query, results)
+        
+        # 最终结果限制
+        final_results = reranked_results[:self.config.top_k]
+        
+        # 更新统计
+        processing_time = time.time() - start_time
+        self._update_stats(mode, processing_time)
+        
+        # 缓存结果
+        if self.cache:
+            self.cache.put(final_results, key=cache_key)
+        
+        return final_results
+    
+    def _auto_select_mode(self, query: str, results: List[RetrievalResult]) -> RerankMode:
+        """自动选择重排序模式"""
+        # 分析结果类型
+        has_images = any('image_path' in r.metadata or 'image' in r.retrieval_type for r in results)
+        has_text = any('text' in r.retrieval_type or r.content for r in results)
+        
+        # 分析查询类型
+        query_has_image_hints = any(hint in query.lower() for hint in ['图', 'figure', '图像', '影像'])
+        
+        if has_images and has_text and self.multimodal_enabled:
+            if query_has_image_hints:
+                return RerankMode.MULTIMODAL
+            else:
+                return RerankMode.HYBRID
+        elif has_images and not has_text:
+            return RerankMode.IMAGE_ONLY
+        else:
+            return RerankMode.TEXT_ONLY
+    
+    def _multimodal_rerank(self, query: str, results: List[RetrievalResult]) -> List[RetrievalResult]:
+        """多模态重排序"""
+        if not self.multimodal_enabled:
+            return self._hybrid_rerank(query, results)
+        
+        try:
+            # 计算查询向量
+            query_tokens = self.clip_model.tokenize_text([query])
+            query_text_vector = self.clip_model.encode_text(query_tokens).cpu().numpy()[0]
+            
+            # 为每个结果计算多模态相关性分数
+            enhanced_results = []
+            for result in results:
+                multimodal_score = self._calculate_multimodal_score(
+                    query, query_text_vector, result
+                )
+                
+                # 创建新的结果对象，包含多模态分数
+                new_result = RetrievalResult(
+                    doc_id=result.doc_id,
+                    content=result.content,
+                    metadata=result.metadata.copy(),
+                    score=multimodal_score,
+                    retrieval_type=result.retrieval_type,
+                    resource_collection=result.resource_collection
+                )
+                new_result.metadata['original_score'] = result.score
+                new_result.metadata['multimodal_score'] = multimodal_score
+                new_result.metadata['rerank_strategy'] = 'multimodal'
+                enhanced_results.append(new_result)
+            
+            # 按多模态分数排序
+            enhanced_results.sort(key=lambda x: x.score, reverse=True)
+            return enhanced_results
+            
+        except Exception as e:
+            self.logger.error(f"多模态重排序失败: {e}")
+            return self._hybrid_rerank(query, results)
+    
+    def _calculate_multimodal_score(self, query: str, query_vector: np.ndarray, 
+                                   result: RetrievalResult) -> float:
+        """计算多模态相关性分数"""
+        # 基础分数
+        base_score = result.score
+        
+        # 文本相关性分数
+        text_score = self._calculate_text_similarity(query, result.content)
+        
+        # 图像相关性分数（如果有图像）
+        image_score = 0.0
+        if 'image_path' in result.metadata and self.multimodal_enabled:
+            image_score = self._calculate_image_similarity(query_vector, result)
+        
+        # 跨模态分数
+        cross_modal_score = self._calculate_cross_modal_score(query, result)
+        
+        # 加权组合
+        final_score = (
+            base_score * 0.2 +
+            text_score * self.config.textual_weight +
+            image_score * self.config.visual_weight +
+            cross_modal_score * self.config.cross_modal_weight
+        )
+        
+        return max(final_score, self.config.min_score_threshold)
+    
+    def _calculate_text_similarity(self, query: str, content: str) -> float:
+        """计算文本相似性"""
+        if not content:
+            return 0.0
+        
+        # 简单的词汇重叠相似性
+        query_words = set(query.lower().split())
+        content_words = set(content.lower().split())
+        
+        if not query_words or not content_words:
+            return 0.0
+        
+        overlap = len(query_words.intersection(content_words))
+        union = len(query_words.union(content_words))
+        
+        return overlap / union if union > 0 else 0.0
+    
+    def _calculate_image_similarity(self, query_vector: np.ndarray, result: RetrievalResult) -> float:
+        """计算图像相似性"""
+        # 这里可以扩展为实际的图像向量计算
+        # 暂时使用caption相似性作为代理
+        caption = result.metadata.get('caption', '')
+        if not caption:
+            return 0.0
+        
+        try:
+            caption_tokens = self.clip_model.tokenize_text([caption])
+            caption_vector = self.clip_model.encode_text(caption_tokens).cpu().numpy()[0]
+            
+            # 计算余弦相似性
+            similarity = np.dot(query_vector, caption_vector) / (
+                np.linalg.norm(query_vector) * np.linalg.norm(caption_vector)
+            )
+            return max(0.0, similarity)
+        except:
+            return 0.0
+    
+    def _calculate_cross_modal_score(self, query: str, result: RetrievalResult) -> float:
+        """计算跨模态分数"""
+        # 检查文本中是否有图像引用
+        query_has_image_ref = any(ref in query.lower() for ref in ['图', 'figure', '图像', '如图'])
+        result_has_image = 'relative_path' in result.metadata
+        
+        if query_has_image_ref and result_has_image:
+            return 0.8  # 高跨模态相关性
+        elif query_has_image_ref and not result_has_image:
+            return 0.2  # 低跨模态相关性
+        else:
+            return 0.5  # 中等相关性
+    
+    def _hybrid_rerank(self, query: str, results: List[RetrievalResult]) -> List[RetrievalResult]:
+        """混合重排序策略"""
+        enhanced_results = []
+        
+        # 应用传统重排序
+        rule_scores = {}
+        model_scores = {}
+        
+        if hasattr(self, 'rule_reranker') and self.config.enable_rule_based:
+            rule_result = self.rule_reranker.rerank(query, results)
+            for i, result in enumerate(rule_result):
+                rule_scores[result.doc_id] = result.score
+        
+        if hasattr(self, 'model_reranker') and self.config.enable_model_based:
+            model_result = self.model_reranker.rerank(query, results)
+            for i, result in enumerate(model_result):
+                model_scores[result.doc_id] = result.score
+        
+        # 融合分数
+        for result in results:
+            doc_id = result.doc_id
+            
+            # 组合分数
+            combined_score = result.score * 0.3  # 原始分数权重
+            
+            if doc_id in rule_scores:
+                combined_score += rule_scores[doc_id] * self.config.rule_weight
+            
+            if doc_id in model_scores:
+                combined_score += model_scores[doc_id] * self.config.model_weight
+            
+            # 创建新结果
+            new_result = RetrievalResult(
+                doc_id=result.doc_id,
+                content=result.content,
+                metadata=result.metadata.copy(),
+                score=combined_score,
+                retrieval_type=result.retrieval_type,
+                resource_collection=result.resource_collection
+            )
+            new_result.metadata['original_score'] = result.score
+            new_result.metadata['rule_score'] = rule_scores.get(doc_id, 0.0)
+            new_result.metadata['model_score'] = model_scores.get(doc_id, 0.0)
+            new_result.metadata['rerank_strategy'] = 'hybrid'
+            enhanced_results.append(new_result)
+        
+        # 排序
+        enhanced_results.sort(key=lambda x: x.score, reverse=True)
+        return enhanced_results
+    
+    def _text_only_rerank(self, query: str, results: List[RetrievalResult]) -> List[RetrievalResult]:
+        """仅文本重排序"""
+        if hasattr(self, 'model_reranker') and self.config.enable_model_based:
+            return self.model_reranker.rerank(query, results)
+        elif hasattr(self, 'rule_reranker') and self.config.enable_rule_based:
+            return self.rule_reranker.rerank(query, results)
+        else:
+            return results
+    
+    def _update_stats(self, mode: RerankMode, processing_time: float):
+        """更新性能统计"""
+        self.stats['total_reranks'] += 1
+        self.stats['mode_usage'][mode.value] += 1
+        
+        total = self.stats['total_reranks']
+        current_avg = self.stats['avg_processing_time']
+        self.stats['avg_processing_time'] = (current_avg * (total - 1) + processing_time) / total
+
+
+def create_multimodal_reranker(config: Optional[MultimodalRerankConfig] = None) -> MultimodalReranker:
+    """创建多模态重排序器"""
+    return MultimodalReranker(config)

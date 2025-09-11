@@ -34,8 +34,6 @@ from .modular_retrievers import (
 # Caption检索图片模块
 from .caption_to_image_retriever import (
     CaptionToImageRetriever,
-    CaptionSearchConfig,
-    SearchMode,
     create_caption_retriever
 )
 
@@ -90,8 +88,6 @@ __all__ = [
     
     # Caption检索图片
     'CaptionToImageRetriever',
-    'CaptionSearchConfig',
-    'SearchMode',
     'create_caption_retriever',
     
     # 多数据库管理

@@ -1,4 +1,4 @@
-"""融合检索策略模块
+"""增强的融合检索策略模块
 包含复杂的检索策略、结果融合和数据库管理
 
 主要功能：
@@ -6,29 +6,51 @@
 2. 多种检索方式的结果融合
 3. 检索策略管理
 4. 数据库配置管理
+
+增强功能：
+5. 查询自适应权重调整
+6. 动态文本/图像融合权重
+7. 智能融合策略选择
+8. 领域分区集成
+9. 多模态重排序
 """
 
 import re
 import json
-from typing import List, Dict, Any, Optional, Tuple, Set
-from dataclasses import dataclass
+import time
+from typing import List, Dict, Any, Optional, Tuple, Set, Union, TYPE_CHECKING
+from dataclasses import dataclass, field
 from collections import defaultdict
+from enum import Enum
+
+if TYPE_CHECKING:
+    from UltrasoundRAG.retrival.modular_retrievers import T2TRetriever, T2IRetriever, I2TRetriever, I2IRetriever, RetrievalContext
 
 from UltrasoundRAG.utils.logger import setup_logger
 from UltrasoundRAG.retrival.data_structures import RetrievalResult
-from UltrasoundRAG.retrival.modular_retrievers import (
-    T2TRetriever, 
-    T2IRetriever,
-    I2TRetriever,
-    I2IRetriever,
-    RetrievalContext
-)
 from UltrasoundRAG.retrival.caption_to_image_retriever import CaptionToImageRetriever, create_caption_retriever
+
+# 导入增强模块
+from UltrasoundRAG.utils.query_adaptive_weights import (
+    get_fusion_weights, get_weight_calculator, calculate_query_adaptive_weights
+)
+from UltrasoundRAG.utils.domain_partition import get_partition_manager, classify_query_domain
+from UltrasoundRAG.utils.caption_enhancement import create_caption_enhancer  
+from UltrasoundRAG.retrival.enhanced_reranker import create_multimodal_reranker
+
+
+class FusionStrategy(Enum):
+    """融合策略枚举"""
+    SIMPLE_CONCAT = "simple_concat"  # 简单拼接
+    WEIGHTED_MERGE = "weighted_merge"  # 加权合并
+    ADAPTIVE_SMART = "adaptive_smart"  # 自适应智能融合
+    INTERLEAVED = "interleaved"  # 交错融合
+    SCORE_BASED = "score_based"  # 基于分数的融合
 
 
 @dataclass
 class FusionConfig:
-    """融合检索配置"""
+    """增强的融合检索配置"""
     # 基础配置
     top_k: int = 10
     enable_text_image_fusion: bool = True  # 是否启用文本-图片融合
@@ -38,16 +60,34 @@ class FusionConfig:
     image_caption_ratio: float = 0.3  # 图片caption检索的比重
     enable_exact_title_match: bool = True  # 是否启用精确标题匹配
     
-    # 结果融合权重
+    # 结果融合权重（基础值，会被动态调整）
     text_weight: float = 0.6
     image_weight: float = 0.4
     
     # 去重配置
     content_similarity_threshold: float = 0.8  # 内容相似度阈值
     enable_deduplication: bool = True
-    # 新增：可配置来源权重与去重粒度
-    source_weights: Dict[str, float] = None
+    source_weights: Dict[str, float] = field(default_factory=dict)
     dedup_key: str = "content"
+    
+    # 增强功能开关
+    enable_adaptive_weights: bool = True  # 启用自适应权重
+    enable_domain_partition: bool = True  # 启用领域分区
+    enable_caption_enhancement: bool = True  # 启用Caption增强
+    enable_multimodal_rerank: bool = True  # 启用多模态重排序
+    enable_smart_fusion: bool = True  # 启用智能融合
+    
+    # 融合策略配置
+    default_fusion_strategy: FusionStrategy = FusionStrategy.ADAPTIVE_SMART
+    fallback_strategy: FusionStrategy = FusionStrategy.WEIGHTED_MERGE
+    
+    # 性能配置
+    enable_caching: bool = True
+    max_candidates_for_rerank: int = 50
+    
+    # 动态权重阈值
+    image_hint_boost: float = 0.3  # 检测到图像提示时的权重提升
+    technical_text_boost: float = 0.2  # 检测到技术文本时的权重提升
 
 
 # ImageTitleExtractor 已移至 image_title_matcher.py 模块
@@ -57,8 +97,8 @@ class T2TFusionStrategy:
     """T2T融合策略 - 实现复杂的文本到文本检索"""
     
     def __init__(self, 
-                 text_retriever: T2TRetriever,
-                 image_retriever: T2IRetriever,
+                 text_retriever: 'T2TRetriever',
+                 image_retriever: 'T2IRetriever',
                  config: FusionConfig):
         self.text_retriever = text_retriever
         self.image_retriever = image_retriever
@@ -255,55 +295,167 @@ class T2TFusionStrategy:
         return unique_results
 
 
+@dataclass 
+class FusionResult:
+    """融合结果数据类"""
+    results: List[RetrievalResult]
+    strategy_used: str
+    weights_applied: Dict[str, float]
+    total_candidates: int
+    response_time: float = 0.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
 class ResultFusionManager:
-    """结果融合管理器 - 管理不同检索方式的结果融合"""
+    """增强的结果融合管理器 - 管理不同检索方式的结果融合"""
     
     def __init__(self, config: FusionConfig):
         self.config = config
         self.logger = setup_logger(self.__class__.__name__)
+        
+        # 初始化增强组件
+        self._init_enhancement_components()
+        
+        # 性能统计
+        self.stats = {
+            'total_fusions': 0,
+            'strategy_usage': defaultdict(int),
+            'avg_response_time': 0.0
+        }
+    
+    def _init_enhancement_components(self):
+        """初始化增强组件"""
+        if self.config.enable_adaptive_weights:
+            self.weight_calculator = get_weight_calculator()
+        
+        if self.config.enable_domain_partition:
+            self.partition_manager = get_partition_manager()
+            
+        if self.config.enable_caption_enhancement:
+            self.caption_enhancer = create_caption_enhancer()
+            
+        if self.config.enable_multimodal_rerank:
+            self.reranker = create_multimodal_reranker()
     
     def fuse_multimodal_results(self, 
+                               query: str,
                                text_results: List[RetrievalResult],
                                image_results: List[RetrievalResult],
-                               strategy: str = "weighted") -> List[RetrievalResult]:
+                               strategy: Optional[FusionStrategy] = None) -> FusionResult:
         """
-        融合多模态检索结果
+        增强的多模态检索结果融合
         
         Args:
+            query: 查询文本（用于自适应权重计算）
             text_results: 文本检索结果
             image_results: 图像检索结果
-            strategy: 融合策略 ("weighted", "interleaved", "score_based")
+            strategy: 融合策略，如果为None则自动选择
             
         Returns:
-            融合后的结果列表
+            融合结果对象
         """
-        if strategy == "weighted":
-            return self._weighted_fusion(text_results, image_results)
-        elif strategy == "interleaved":
-            return self._interleaved_fusion(text_results, image_results)
-        elif strategy == "score_based":
-            return self._score_based_fusion(text_results, image_results)
+        start_time = time.time()
+        
+        # 自动选择融合策略
+        if strategy is None:
+            strategy = self._select_fusion_strategy(query, text_results, image_results)
+        
+        # 获取动态权重
+        dynamic_weights = self._get_dynamic_weights(query)
+        
+        # 执行融合
+        if strategy == FusionStrategy.ADAPTIVE_SMART:
+            fused_results = self._adaptive_smart_fusion(query, text_results, image_results, dynamic_weights)
+        elif strategy == FusionStrategy.WEIGHTED_MERGE:
+            fused_results = self._weighted_fusion(text_results, image_results, dynamic_weights)
+        elif strategy == FusionStrategy.INTERLEAVED:
+            fused_results = self._interleaved_fusion(text_results, image_results, dynamic_weights)
+        elif strategy == FusionStrategy.SCORE_BASED:
+            fused_results = self._score_based_fusion(text_results, image_results, dynamic_weights)
         else:
-            self.logger.warning(f"未知的融合策略: {strategy}，使用默认weighted策略")
-            return self._weighted_fusion(text_results, image_results)
+            # 简单拼接作为兜底
+            fused_results = self._simple_concat_fusion(text_results, image_results)
+            dynamic_weights = {"text_weight": 0.5, "image_weight": 0.5}
+        
+        # 应用多模态重排序
+        if (self.config.enable_multimodal_rerank and hasattr(self, 'reranker') 
+            and fused_results and len(fused_results) > 1):
+            
+            candidates = fused_results[:self.config.max_candidates_for_rerank]
+            fused_results = self.reranker.rerank_results(query, candidates)
+        
+        # 最终去重和截取
+        if self.config.enable_deduplication:
+            fused_results = self._deduplicate_results(fused_results)
+        
+        final_results = fused_results[:self.config.top_k]
+        
+        # 更新统计
+        response_time = time.time() - start_time
+        self._update_stats(strategy.value, response_time)
+        
+        return FusionResult(
+            results=final_results,
+            strategy_used=strategy.value,
+            weights_applied=dynamic_weights,
+            total_candidates=len(text_results) + len(image_results),
+            response_time=response_time,
+            metadata={
+                'text_count': len(text_results),
+                'image_count': len(image_results),
+                'rerank_applied': self.config.enable_multimodal_rerank and hasattr(self, 'reranker'),
+                'dedup_applied': self.config.enable_deduplication
+            }
+        )
     
     def _weighted_fusion(self, text_results: List[RetrievalResult], 
-                        image_results: List[RetrievalResult]) -> List[RetrievalResult]:
-        """加权融合策略"""
-        # 应用权重
-        for result in text_results:
-            result.score *= self.config.text_weight
-            result.metadata['fusion_strategy'] = 'weighted_text'
+                        image_results: List[RetrievalResult], 
+                        dynamic_weights: Optional[Dict[str, float]] = None) -> List[RetrievalResult]:
+        """增强的加权融合策略"""
+        # 使用动态权重或默认权重
+        if dynamic_weights:
+            text_weight = dynamic_weights.get('text_weight', self.config.text_weight)
+            image_weight = dynamic_weights.get('image_weight', self.config.image_weight)
+        else:
+            text_weight = self.config.text_weight
+            image_weight = self.config.image_weight
         
+        # 应用权重
+        weighted_text_results = []
+        for result in text_results:
+            new_result = result.__class__(
+                doc_id=result.doc_id,
+                content=result.content,
+                metadata=result.metadata.copy(),
+                score=result.score * text_weight,
+                retrieval_type=result.retrieval_type,
+                resource_collection=result.resource_collection
+            )
+            new_result.metadata['weight_applied'] = text_weight
+            new_result.metadata['fusion_source'] = 'text'
+            new_result.metadata['fusion_strategy'] = 'weighted_enhanced'
+            weighted_text_results.append(new_result)
+        
+        weighted_image_results = []
         for result in image_results:
-            result.score *= self.config.image_weight
-            result.metadata['fusion_strategy'] = 'weighted_image'
+            new_result = result.__class__(
+                doc_id=result.doc_id,
+                content=result.content,
+                metadata=result.metadata.copy(),
+                score=result.score * image_weight,
+                retrieval_type=result.retrieval_type,
+                resource_collection=result.resource_collection
+            )
+            new_result.metadata['weight_applied'] = image_weight
+            new_result.metadata['fusion_source'] = 'image'
+            new_result.metadata['fusion_strategy'] = 'weighted_enhanced'
+            weighted_image_results.append(new_result)
         
         # 合并并排序
-        all_results = text_results + image_results
+        all_results = weighted_text_results + weighted_image_results
         all_results.sort(key=lambda x: x.score, reverse=True)
         
-        return all_results[:self.config.top_k]
+        return all_results  # 不在这里限制top_k，由调用方处理
     
     def _interleaved_fusion(self, text_results: List[RetrievalResult], 
                            image_results: List[RetrievalResult]) -> List[RetrievalResult]:
@@ -342,6 +494,161 @@ class ResultFusionManager:
         all_results.sort(key=lambda x: x.score, reverse=True)
         
         return all_results[:self.config.top_k]
+    
+    # === 新增增强方法 ===
+    
+    def _get_dynamic_weights(self, query: str) -> Dict[str, float]:
+        """获取查询自适应的动态权重"""
+        if not self.config.enable_adaptive_weights or not hasattr(self, 'weight_calculator'):
+            return {"text_weight": self.config.text_weight, "image_weight": self.config.image_weight}
+        
+        # 使用查询自适应权重计算器
+        fusion_weights = get_fusion_weights(query)
+        
+        # 应用配置的权重提升
+        if 'image_hint' in fusion_weights and fusion_weights['image_hint'] > 0.5:
+            fusion_weights['image_weight'] += self.config.image_hint_boost
+            fusion_weights['text_weight'] -= self.config.image_hint_boost
+        
+        # 确保权重在合理范围内
+        fusion_weights['text_weight'] = max(0.1, min(0.9, fusion_weights['text_weight']))
+        fusion_weights['image_weight'] = max(0.1, min(0.9, fusion_weights['image_weight']))
+        
+        return fusion_weights
+    
+    def _select_fusion_strategy(self, query: str, text_results: List[RetrievalResult], 
+                               image_results: List[RetrievalResult]) -> FusionStrategy:
+        """智能选择融合策略"""
+        if not self.config.enable_smart_fusion:
+            return self.config.default_fusion_strategy
+        
+        # 分析查询特征
+        if hasattr(self, 'weight_calculator'):
+            features = self.weight_calculator.analyze_query(query)
+            
+            # 基于查询特征选择策略
+            if features.is_caption_like and len(image_results) > len(text_results):
+                return FusionStrategy.SCORE_BASED  # Caption查询优先使用分数融合
+            elif features.is_technical and len(text_results) > len(image_results):
+                return FusionStrategy.WEIGHTED_MERGE  # 技术查询优先使用加权融合
+            elif len(text_results) > 0 and len(image_results) > 0:
+                return FusionStrategy.ADAPTIVE_SMART  # 平衡查询使用自适应融合
+        
+        # 基于结果数量选择策略
+        if len(text_results) == 0:
+            return FusionStrategy.SIMPLE_CONCAT
+        elif len(image_results) == 0:
+            return FusionStrategy.SIMPLE_CONCAT
+        else:
+            return self.config.default_fusion_strategy
+    
+    def _adaptive_smart_fusion(self, query: str, text_results: List[RetrievalResult], 
+                              image_results: List[RetrievalResult], 
+                              dynamic_weights: Dict[str, float]) -> List[RetrievalResult]:
+        """自适应智能融合策略"""
+        # 分析结果分布
+        text_avg_score = sum(r.score for r in text_results) / len(text_results) if text_results else 0
+        image_avg_score = sum(r.score for r in image_results) / len(image_results) if image_results else 0
+        
+        # 如果一种模态的平均分数明显高于另一种，调整权重
+        score_diff = abs(text_avg_score - image_avg_score)
+        if score_diff > 0.3:  # 阈值可配置
+            if text_avg_score > image_avg_score:
+                dynamic_weights['text_weight'] += 0.1
+                dynamic_weights['image_weight'] -= 0.1
+            else:
+                dynamic_weights['image_weight'] += 0.1
+                dynamic_weights['text_weight'] -= 0.1
+        
+        # 如果结果数量差异很大，使用交错融合
+        count_ratio = len(text_results) / max(len(image_results), 1)
+        if count_ratio > 3 or count_ratio < 0.33:
+            return self._interleaved_fusion(text_results, image_results, dynamic_weights)
+        
+        # 否则使用加权融合
+        return self._weighted_fusion(text_results, image_results, dynamic_weights)
+    
+    def _simple_concat_fusion(self, text_results: List[RetrievalResult], 
+                             image_results: List[RetrievalResult]) -> List[RetrievalResult]:
+        """简单拼接融合"""
+        all_results = text_results + image_results
+        all_results.sort(key=lambda x: x.score, reverse=True)
+        
+        # 添加融合元数据
+        for result in all_results:
+            result.metadata['fusion_strategy'] = 'simple_concat'
+        
+        return all_results
+    
+    def _interleaved_fusion(self, text_results: List[RetrievalResult], 
+                           image_results: List[RetrievalResult],
+                           dynamic_weights: Optional[Dict[str, float]] = None) -> List[RetrievalResult]:
+        """增强的交错融合策略"""
+        if dynamic_weights:
+            # 如果提供了动态权重，先应用权重
+            weighted_text = self._apply_weights_to_results(text_results, dynamic_weights.get('text_weight', 0.6))
+            weighted_image = self._apply_weights_to_results(image_results, dynamic_weights.get('image_weight', 0.4))
+        else:
+            weighted_text = text_results
+            weighted_image = image_results
+        
+        # 交错合并
+        fused_results = []
+        i = j = 0
+        while i < len(weighted_text) and j < len(weighted_image):
+            if weighted_text[i].score >= weighted_image[j].score:
+                weighted_text[i].metadata['fusion_strategy'] = 'interleaved_text'
+                fused_results.append(weighted_text[i])
+                i += 1
+            else:
+                weighted_image[j].metadata['fusion_strategy'] = 'interleaved_image'
+                fused_results.append(weighted_image[j])
+                j += 1
+        
+        # 添加剩余结果
+        while i < len(weighted_text):
+            weighted_text[i].metadata['fusion_strategy'] = 'interleaved_text_remaining'
+            fused_results.append(weighted_text[i])
+            i += 1
+        
+        while j < len(weighted_image):
+            weighted_image[j].metadata['fusion_strategy'] = 'interleaved_image_remaining'
+            fused_results.append(weighted_image[j])
+            j += 1
+        
+        return fused_results
+    
+    def _apply_weights_to_results(self, results: List[RetrievalResult], weight: float) -> List[RetrievalResult]:
+        """为结果列表应用权重"""
+        weighted_results = []
+        for result in results:
+            new_result = result.__class__(
+                doc_id=result.doc_id,
+                content=result.content,
+                metadata=result.metadata.copy(),
+                score=result.score * weight,
+                retrieval_type=result.retrieval_type,
+                resource_collection=result.resource_collection
+            )
+            new_result.metadata['weight_applied'] = weight
+            weighted_results.append(new_result)
+        return weighted_results
+    
+    def _update_stats(self, strategy: str, response_time: float):
+        """更新性能统计"""
+        self.stats['total_fusions'] += 1
+        self.stats['strategy_usage'][strategy] += 1
+        
+        total = self.stats['total_fusions']
+        current_avg = self.stats['avg_response_time']
+        self.stats['avg_response_time'] = (current_avg * (total - 1) + response_time) / total
+
+
+def create_enhanced_fusion_manager(config: Optional[FusionConfig] = None) -> ResultFusionManager:
+    """创建增强的融合管理器"""
+    if config is None:
+        config = FusionConfig()
+    return ResultFusionManager(config)
 
 
 class FusionRetrievalManager:
@@ -370,36 +677,58 @@ class FusionRetrievalManager:
         self.logger = setup_logger(self.__class__.__name__)
         self.fusion_config = fusion_config or FusionConfig()
         
-        # 创建检索上下文
-        context = RetrievalContext(
-            db_name=db_name or "default",
-            text_collection="text_collection",  # 从配置获取
-            image_collection="image_collection",  # 从配置获取
-            top_k=self.fusion_config.top_k,
-            milvus_uri=milvus_uri,
-            milvus_token=milvus_token
-        )
+        # 延迟导入以避免循环依赖
+        self._retriever_classes = None
+        self._context_params = {
+            'db_name': db_name or "default",
+            'text_collection': "text_collection",  # 从配置获取
+            'image_collection': "image_collection",  # 从配置获取
+            'top_k': self.fusion_config.top_k,
+            'milvus_uri': milvus_uri,
+            'milvus_token': milvus_token
+        }
         
-        # 初始化基础检索器
-        try:
-            self.text_retriever = T2TRetriever(context)
-            self.image_retriever = T2IRetriever(context)
-            self.i2t_retriever = I2TRetriever(context)
-            self.i2i_retriever = I2IRetriever(context)
-            self.logger.info("基础检索器初始化成功")
-        except Exception as e:
-            self.logger.error(f"基础检索器初始化失败: {e}")
-            raise
+        # 检索器将在需要时初始化
+        self.text_retriever = None
+        self.image_retriever = None
+        self.i2t_retriever = None
+        self.i2i_retriever = None
         
-        # 初始化策略管理器
-        self.t2t_strategy = T2TFusionStrategy(
-            self.text_retriever, 
-            self.image_retriever, 
-            self.fusion_config
-        )
+        # 策略管理器也将延迟初始化
+        self.t2t_strategy = None
         self.fusion_manager = ResultFusionManager(self.fusion_config)
         
         self.logger.info("融合检索管理器初始化完成")
+    
+    def _ensure_retrievers_initialized(self):
+        """确保检索器已初始化"""
+        if self.text_retriever is None:
+            # 延迟导入以避免循环依赖
+            from UltrasoundRAG.retrival.modular_retrievers import (
+                T2TRetriever, T2IRetriever, I2TRetriever, I2IRetriever, RetrievalContext
+            )
+            
+            # 创建检索上下文
+            context = RetrievalContext(**self._context_params)
+            
+            # 初始化检索器
+            try:
+                self.text_retriever = T2TRetriever(context)
+                self.image_retriever = T2IRetriever(context)
+                self.i2t_retriever = I2TRetriever(context)
+                self.i2i_retriever = I2IRetriever(context)
+                
+                # 初始化策略管理器
+                self.t2t_strategy = T2TFusionStrategy(
+                    self.text_retriever, 
+                    self.image_retriever, 
+                    self.fusion_config
+                )
+                
+                self.logger.info("基础检索器延迟初始化成功")
+            except Exception as e:
+                self.logger.error(f"基础检索器初始化失败: {e}")
+                raise
     
     def t2t_search(self, query: str, top_k: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -412,6 +741,7 @@ class FusionRetrievalManager:
         Returns:
             T2T检索结果
         """
+        self._ensure_retrievers_initialized()
         return self.t2t_strategy.search(query, top_k)
     
     def t2i_search(self, query: str, top_k: Optional[int] = None) -> Dict[str, Any]:
@@ -425,6 +755,7 @@ class FusionRetrievalManager:
         Returns:
             T2I检索结果
         """
+        self._ensure_retrievers_initialized()
         top_k = top_k or self.fusion_config.top_k
         image_result = self.image_retriever.search(query, top_k)
         results = image_result.get('results', [])
@@ -446,6 +777,7 @@ class FusionRetrievalManager:
         Returns:
             I2T检索结果
         """
+        self._ensure_retrievers_initialized()
         top_k = top_k or self.fusion_config.top_k
         i2t_result = self.i2t_retriever.search(image_path, top_k)
         results = i2t_result.get('results', [])
