@@ -281,8 +281,11 @@ conda activate ultrasound-rag
 # 安装依赖
 pip install -r requirements.txt
 
-# 启动增强版API服务
-python enhanced_api.py
+# 启动 API 服务（方式一）
+python -m ultrasoundrag.api
+
+# 启动 API 服务（方式二）
+uvicorn ultrasoundrag.api.api:app --host 0.0.0.0 --port 8000
 ```
 
 ### 3. 验证安装
@@ -513,15 +516,17 @@ python -m MedicalRAG/medicalrag
 ### 启动 API 服务
 
 ```bash
-python start_api.py
+python -m ultrasoundrag.api
+# 或
+uvicorn ultrasoundrag.api.api:app --host 0.0.0.0 --port 8000
 ```
 
-服务启动后访问 `http://localhost:8000/docs` 查看交互式文档（Swagger UI），`/redoc` 查看 Redoc。
+服务启动后访问 `http://localhost:8000/docs` 查看交互式文档（Swagger UI），`/health` 查看健康检查。
 
 ### 基础信息
 
-- 基础URL: `http://localhost:8000/api/v1`
-- 文档地址: `/docs`, `/redoc`
+- 基础URL: `http://localhost:8000`
+- 文档地址: `/docs`
 - 认证方式: Bearer Token，请在请求头中携带：
 
 ```bash
@@ -530,10 +535,9 @@ Authorization: Bearer rag_demo_key
 
 ### 核心接口
 
-- `POST /api/v1/rag/search`：统一检索接口（支持文本/多模态、单条或批量、可控检索与生成）
-- `GET  /api/v1/rag/status`：系统状态检查
-- `GET  /api/v1/rag/config`：获取当前配置
-- `GET  /api/v1/rag/models`：模型列表
+- `POST /search`：统一检索接口（支持 t2t/t2i/i2t/i2i/auto/multimodal）
+- `GET  /system/status`：系统状态（高级功能可用时）
+- `GET  /databases`：可用数据库列表
 - `GET  /health`：健康检查
 - `GET  /`：根信息
 
@@ -542,32 +546,40 @@ Authorization: Bearer rag_demo_key
 - 单个文本查询（Form）
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/rag/search" \
-  -H "Authorization: Bearer rag_demo_key" \
-  -H "Content-Type: multipart/form-data" \
-  -F "query=胎儿心脏超声检查的正常表现是什么？" \
-  -F "top_k=10" \
-  -F "enable_generate=true"
+curl -X POST "http://localhost:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "db_name": "default",
+    "mode": "t2t",
+    "query": "心脏超声检查方法",
+    "top_k": 10
+  }'
 ```
 
 - 多模态查询（推荐：multipart + payload JSON）
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/rag/search" \
-  -H "Authorization: Bearer rag_demo_key" \
-  -H "Content-Type: multipart/form-data" \
-  -F "payload={\"query\":\"这张超声图像显示了什么？\",\"top_k\":5,\"enable_generate\":true}" \
-  -F "image=@/path/to/ultrasound.jpg"
+curl -X POST "http://localhost:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "db_name": "default",
+    "mode": "i2t",
+    "image_path": "/abs/path/to/ultrasound.jpg",
+    "top_k": 5
+  }'
 ```
 
 - 批量查询（Form，`queries` 为 JSON 字符串）
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/rag/search" \
-  -H "Authorization: Bearer rag_demo_key" \
-  -H "Content-Type: multipart/form-data" \
-  -F 'queries=["胎儿心脏超声检查的正常表现是什么？", "如何判断胎儿发育是否正常？"]' \
-  -F "top_k=5"
+curl -X POST "http://localhost:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "db_name": "default",
+    "mode": "multimodal",
+    "query": "胎儿心脏超声检查的正常表现是什么？",
+    "top_k": 5
+  }'
 ```
 
 更多参数、响应示例与错误说明请参见 `test/API_Documentation.md`。

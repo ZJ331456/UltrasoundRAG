@@ -1,0 +1,43 @@
+# MANIFEST.in - 包含在分发包中的文件列表
+
+# 包含文档文件
+include README.md
+include LICENSE
+include CHANGELOG.md
+include *.md
+
+# 包含配置文件
+recursive-include ultrasoundrag/config *.yaml *.json *.yml
+recursive-include ultrasoundrag *.yaml *.json *.yml
+
+# 包含项目配置
+include pyproject.toml
+include setup.py
+include requirements.txt
+
+# 包含示例文件
+recursive-include examples *.py *.md *.yaml
+
+# 包含文档
+recursive-include docs *.rst *.md *.py *.bat Makefile
+
+# 包含测试文件（可选）
+recursive-include tests *.py
+
+# 排除不需要的文件
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude __pycache__
+global-exclude .git*
+global-exclude .DS_Store
+global-exclude *.so
+global-exclude *.dylib
+global-exclude *.egg-info
+
+# 排除临时文件
+prune .tmp
+prune build
+prune dist
+prune .pytest_cache
+prune .mypy_cache

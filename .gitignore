@@ -30,6 +30,8 @@ logs/
 cache/
 tmp/
 temp/
+.tmp/
+__pycache__/
 
 # ---- 训练输出/检查点 ----
 runs/
@@ -37,6 +39,10 @@ outputs/
 checkpoints/
 experiments/
 results/
+result/
+
+# ---- 旧代码与临时文件 ----
+旧的需要抛弃但是暂时别删除！/
 
 # ---- 数据集与大文件目录（保留说明文档） ----
 data/**

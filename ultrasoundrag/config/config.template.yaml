@@ -1,0 +1,115 @@
+# UltrasoundRAG 配置模板
+# 复制此文件为 config.yaml 并根据你的环境进行修改
+
+# 路径配置 - 跨平台兼容的路径管理
+# 支持三种配置方式（按优先级）：
+# 1. 环境变量: export ULTRASOUNDRAG_PROJECT_ROOT="/your/project/path"
+# 2. 配置文件: project_root: "/absolute/path/to/project" 
+# 3. 自动检测: project_root: "auto" (推荐)
+paths:
+  project_root: "auto"  # 推荐使用 "auto" 进行自动检测
+  data_dir: "data"      # 数据目录 (相对于project_root)
+  models_dir: "models"  # 模型目录 (相对于project_root)
+  results_dir: "result" # 结果输出目录
+  logs_dir: "logs"      # 日志目录
+  cache_dir: ".cache"   # 缓存目录
+
+# Milvus 向量数据库配置
+milvus: 
+  milvus_uri: "http://localhost:19530"  # Milvus服务地址
+  milvus_token: "root:Milvus"           # 认证信息
+  db_name: "ultrasound_vector"          # 数据库名称
+  md_collection_name: "thyroidagent"    # Markdown集合名称
+  image_collection_name: "images"       # 图片集合名称
+  pdf_collection_name: "thesis_papers"  # PDF集合名称
+
+# 索引创建配置
+indexing:
+  db_name: "ultrasound_vector"
+  
+  # 图片解析配置
+  image_parse:
+    model_path: "models/fetal-clip/dataset2-pretrain/final_model.pt"
+    model_config_path: "models/fetal-clip/config.json"
+
+  # Markdown 解析配置
+  markdown_parse:
+    max_chunk_size: 1500  # 单个chunk的大小 
+    overlap_ratio: 0.15   # 重叠窗口比例，15%可以保持较好的语义连续性
+    min_chunk_size: 100   # 最小chunk大小，避免过短的无意义片段
+
+  # PDF 解析配置
+  pdf_parse:
+    max_chunk_size: 1500  # 单个chunk的大小 
+    overlap_ratio: 0.15   # 重叠窗口比例，15%可以保持较好的语义连续性
+    min_chunk_size: 100   # 最小chunk大小，避免过短的无意义片段 
+
+  # Markdown 数据集配置
+  markdown:
+    datasets:
+      ultrasound_book:
+        enabled: true
+        base_path: "data/book/markdown"
+        file_extensions: [".md"]
+        collection_name: "normal_book_md"
+        description: "超声书籍Markdown数据集"
+      
+      thyroidagent:
+        enabled: false  # 根据需要启用
+        base_path: "data/thyroidagent/markdown"
+        file_extensions: [".md"]
+        collection_name: "thyroid_agent_md"
+        description: "甲状腺Agent Markdown数据集"
+
+  # 图片数据集配置
+  image:
+    datasets:
+      ultrasound_book:
+        enabled: true
+        base_path: "data/book/image"
+        file_extensions: [".jpg", ".jpeg", ".png", ".bmp"]
+        image_index_path: "image_index.jsonl"
+        collection_name: "normal_book_image"
+        description: "超声书籍图片数据集"
+
+  # PDF 数据集配置
+  pdf:
+    datasets:
+      thesis_papers:
+        enabled: false  # 根据需要启用
+        base_path: "data/thesis"
+        file_extensions: [".pdf"]
+        collection_name: "thesis_papers"
+        description: "学术论文PDF数据集"
+
+# Embedding 模型配置
+embedding:
+  provider: "qwen_embedding"
+
+# 重排序配置
+rerank:
+  enabled: true
+  type: "model_based"  # "model_based" 或 "llm_based"
+  model_path: "models/jina-reranker-v2-base-multilingual"
+  top_n: 3
+  device: "cuda"  # 或 "cpu"
+  batch_size: 1
+
+# 检索器配置
+retriever:
+  top_k: 10
+  enable_cache: true
+
+# 环境特定配置示例
+# 开发环境 - 复制为 config.development.yaml
+# milvus:
+#   milvus_uri: "http://localhost:19530"
+#   db_name: "ultrasound_dev"
+
+# 生产环境 - 复制为 config.production.yaml  
+# milvus:
+#   milvus_uri: "http://your-production-milvus:19530"
+#   db_name: "ultrasound_prod"
+#   
+# paths:
+#   project_root: "/opt/ultrasound-rag"
