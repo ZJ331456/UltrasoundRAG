@@ -26,7 +26,7 @@ class ImageParser:
         image_parse_cfg = config['indexing']['image_parse']
         
         dataset_cfg = image_cfg['datasets'][dataset_name]
-        self.base_image_path = dataset_cfg['base_image_path']
+        self.base_image_path = dataset_cfg['base_path']
         self.image_index_path = os.path.join(self.base_image_path, dataset_cfg['image_index_path'])
         self.model_path = image_parse_cfg['model_path']
         self.model_config_path = image_parse_cfg['model_config_path']

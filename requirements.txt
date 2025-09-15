@@ -61,5 +61,10 @@ GPUtil
 # 服务器
 uvicorn
 
-# pdf解析
-pdfplumber
+# PDF解析相关依赖
+PyMuPDF>=1.23.0  # PDF文档处理
+paddleocr>=2.7.0  # OCR文字识别
+paddlepaddle>=2.5.0  # PaddleOCR依赖
+opencv-python>=4.8.0  # 图像处理
+Pillow>=9.0.0  # 图像处理（与现有numpy兼容）
+pdfplumber  # 原有PDF解析库

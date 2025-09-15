@@ -1,272 +1,41 @@
 """
 UltrasoundRAG 索引构建核心模块
-集中处理 Markdown 和图片索引的构建逻辑
+重构版本：使用模块化的工具类，职责更清晰
 """
 
 import os
-from typing import List, Optional
-from tqdm import tqdm
+from typing import List, Optional, Dict
 
 from ...config import config
-from ...utils.embedding_utils import embedding_provider
-from ...data.loaders.markdown_parser import MarkdownParser
-from ...data.loaders.image_parser import ImageParser
-from ...data.stores.milvus_store import MilvusManager
 from ...utils import setup_logger
+from ...data.processors.database_operations import DatabaseOperations
+from ...data.processors.dataset_builder import DatasetBuilder
 from ..document_updater import DocumentUpdateManager, UpdateStats
 
 
 class IndexBuilder:
-    """统一的索引构建器"""
+    """统一的索引构建器 - 重构版本"""
     
     def __init__(self):
         self.logger = setup_logger("IndexBuilder")
+        self.dataset_builder = DatasetBuilder()
     
     def build_markdown_index(self, recreate: bool = False, only_datasets: Optional[List[str]] = None) -> dict:
-        """构建Markdown索引"""
-        self.logger.info("=" * 50)
-        self.logger.info("开始构建 Markdown 索引")
-        
-        markdown_cfg = config['indexing']['markdown']
-        built_count = 0
-        skipped_count = 0
-        global_id = 1
-        
-        datasets_items = list(markdown_cfg['datasets'].items())
-        for dataset_name, dataset_cfg in tqdm(datasets_items, desc="Markdown 数据集", unit="ds"):
-            if only_datasets and dataset_name not in only_datasets:
-                continue
-            
-            if dataset_cfg.get('enabled', False):
-                self.logger.info(f"处理 Markdown 数据集: {dataset_name}")
-                
-                try:
-                    # 构建单个数据集
-                    success = self._build_single_markdown_dataset(
-                        dataset_name, dataset_cfg, recreate, global_id
-                    )
-                    if success:
-                        built_count += 1
-                        self.logger.info(f"数据集 {dataset_name} 索引构建成功")
-                    else:
-                        self.logger.error(f"数据集 {dataset_name} 索引构建失败")
-                        
-                    # 更新global_id（简化处理）
-                    global_id += 10000  # 为每个数据集预留ID空间
-                    
-                except FileNotFoundError as e:
-                    self.logger.error(f"数据集 {dataset_name} 文件不存在: {e}")
-                    skipped_count += 1
-                except PermissionError as e:
-                    self.logger.error(f"数据集 {dataset_name} 访问权限不足: {e}")
-                    skipped_count += 1
-                except ConnectionError as e:
-                    self.logger.error(f"数据集 {dataset_name} 数据库连接失败: {e}")
-                    skipped_count += 1
-                except Exception as e:
-                    self.logger.error(f"构建数据集 {dataset_name} 时发生错误: {type(e).__name__}: {e}")
-                    skipped_count += 1
-            else:
-                skipped_count += 1
-        
-        result = {
-            'type': 'markdown',
-            'built_count': built_count,
-            'skipped_count': skipped_count,
-            'total_datasets': len(datasets_items)
-        }
-        
-        self.logger.info(f"Markdown 构建完成：成功 {built_count}，跳过 {skipped_count}")
-        return result
+        """构建Markdown索引 - 重构版本"""
+        return self.dataset_builder.build_all_datasets_of_type(
+            dataset_type="markdown", 
+            recreate=recreate, 
+            only_datasets=only_datasets
+        )
     
     def build_image_index(self, recreate: bool = False, only_datasets: Optional[List[str]] = None) -> dict:
-        """构建图片索引"""
-        self.logger.info("=" * 50)
-        self.logger.info("开始构建图片索引")
-        
-        image_cfg = config['indexing']['image']
-        built_count = 0
-        skipped_count = 0
-        global_id = 1
-        
-        datasets_items = list(image_cfg['datasets'].items())
-        for dataset_name, dataset_cfg in tqdm(datasets_items, desc="图片 数据集", unit="ds"):
-            if only_datasets and dataset_name not in only_datasets:
-                continue
-            
-            if dataset_cfg.get('enabled', False):
-                self.logger.info(f"处理图片数据集: {dataset_name}")
-                
-                try:
-                    # 构建单个数据集
-                    success = self._build_single_image_dataset(
-                        dataset_name, dataset_cfg, recreate, global_id
-                    )
-                    if success:
-                        built_count += 1
-                        self.logger.info(f"数据集 {dataset_name} 索引构建成功")
-                    else:
-                        self.logger.error(f"数据集 {dataset_name} 索引构建失败")
-                        
-                    # 更新global_id
-                    global_id += 10000
-                    
-                except Exception as e:
-                    self.logger.error(f"构建数据集 {dataset_name} 时发生错误: {e}")
-                    skipped_count += 1
-            else:
-                skipped_count += 1
-        
-        result = {
-            'type': 'image',
-            'built_count': built_count,
-            'skipped_count': skipped_count,
-            'total_datasets': len(datasets_items)
-        }
-        
-        self.logger.info(f"图片 构建完成：成功 {built_count}，跳过 {skipped_count}")
-        return result
+        """构建图片索引 - 重构版本"""
+        return self.dataset_builder.build_all_datasets_of_type(
+            dataset_type="image", 
+            recreate=recreate, 
+            only_datasets=only_datasets
+        )
     
-    def _build_single_markdown_dataset(self, dataset_name: str, dataset_cfg: dict, 
-                                     recreate: bool, start_id: int) -> bool:
-        """构建单个Markdown数据集"""
-        try:
-            # 确定集合名
-            markdown_cfg = config['indexing']['markdown']
-            target_collection = dataset_cfg.get('collection_name', markdown_cfg.get('collections', 'md_documents'))
-            
-            # 创建管理器
-            manager = MilvusManager(collection_type="md", collection_name=target_collection)
-            if recreate:
-                self.logger.info(f"重建 Markdown 集合: {target_collection}")
-                manager.drop_collection()
-                manager._setup_collection()
-            
-            # 解析数据
-            parser = MarkdownParser(dataset_name=dataset_name)
-            parsed_data = parser.parse_markdowns()
-            if not parsed_data:
-                self.logger.warning(f"数据集 {dataset_name} 没有找到数据")
-                return False
-            
-            # 重写ID
-            for i, item in enumerate(parsed_data):
-                item['id'] = int(start_id + i)
-            
-            # 生成嵌入向量
-            embeddings_qwen, embeddings_clip = self._generate_text_embeddings(parsed_data)
-            
-            # 批量插入
-            return self._batch_insert_data(manager, parsed_data, embeddings_qwen, embeddings_clip)
-            
-        except Exception as e:
-            self.logger.error(f"构建Markdown数据集失败: {e}")
-            return False
-    
-    def _build_single_image_dataset(self, dataset_name: str, dataset_cfg: dict, 
-                                  recreate: bool, start_id: int) -> bool:
-        """构建单个图片数据集"""
-        try:
-            # 确定集合名
-            image_cfg = config['indexing']['image']
-            target_collection = dataset_cfg.get('collection_name', image_cfg.get('collections', 'images'))
-            
-            # 创建管理器
-            manager = MilvusManager(collection_type="image", collection_name=target_collection)
-            if recreate:
-                self.logger.info(f"重建图片集合: {target_collection}")
-                manager.drop_collection()
-                manager._setup_collection()
-            
-            # 解析数据
-            parser = ImageParser(dataset_name=dataset_name)
-            parsed_data = parser.parse_images()
-            if not parsed_data:
-                self.logger.warning(f"数据集 {dataset_name} 没有找到数据")
-                return False
-            
-            # 重写ID
-            for i, item in enumerate(parsed_data):
-                item['id'] = int(start_id + i)
-            
-            # 批量插入
-            embeddings = [item['image_vector'] for item in parsed_data]
-            return self._batch_insert_image_data(manager, parsed_data, embeddings)
-            
-        except Exception as e:
-            self.logger.error(f"构建图片数据集失败: {e}")
-            return False
-    
-    def _generate_text_embeddings(self, parsed_data: List[dict]) -> tuple:
-        """生成文本嵌入向量"""
-        texts = [chunk['content'] for chunk in parsed_data]
-        
-        # Qwen向量
-        embedder_qwen = embedding_provider[config['embedding']['provider']]
-        embeddings_qwen = []
-        batch_size = 64
-        
-        for i in tqdm(range(0, len(texts), batch_size), desc="Qwen 文本嵌入", unit="batch"):
-            batch_texts = texts[i:i + batch_size]
-            try:
-                batch_emb = embedder_qwen.embed_documents(batch_texts)
-            except Exception as e:
-                self.logger.error(f"Qwen 嵌入失败批次 {i // batch_size}: {e}")
-                batch_emb = [[0.0] * 1024 for _ in batch_texts]
-            embeddings_qwen.extend(batch_emb)
-        
-        # CLIP向量
-        try:
-            from ultrasoundrag.model.fetal_clip_model import FetalCLIPModel
-            clip_model = FetalCLIPModel(
-                model_path=config['indexing']['image_parse']['model_path'],
-                config_path=config['indexing']['image_parse']['model_config_path']
-            )
-            embeddings_clip = []
-            
-            for i in tqdm(range(0, len(texts), batch_size), desc="CLIP 文本嵌入", unit="batch"):
-                batch_texts = texts[i:i + batch_size]
-                tokens = clip_model.tokenize_text(batch_texts)
-                feats = clip_model.encode_text(tokens).cpu().numpy()
-                for row in feats:
-                    vec = row.tolist()
-                    if len(vec) != 768:
-                        vec = [0.0] * 768
-                    embeddings_clip.append(vec)
-        except Exception as e:
-            self.logger.error(f"生成CLIP文本向量失败: {e}")
-            embeddings_clip = [[0.0]*768 for _ in texts]
-        
-        return embeddings_qwen, embeddings_clip
-    
-    def _batch_insert_data(self, manager: MilvusManager, parsed_data: List[dict], 
-                          embeddings_qwen: List, embeddings_clip: List) -> bool:
-        """批量插入文本数据"""
-        insert_chunk = 1000
-        insert_ok = True
-        
-        for i in tqdm(range(0, len(parsed_data), insert_chunk), desc="写入 Milvus", unit="chunk"):
-            part_data = parsed_data[i:i + insert_chunk]
-            part_qwen = embeddings_qwen[i:i + insert_chunk]
-            part_clip = embeddings_clip[i:i + insert_chunk]
-            ok = manager.insert_data(part_data, embeddings_qwen=part_qwen, embeddings_clip=part_clip)
-            insert_ok = insert_ok and ok
-        
-        return insert_ok
-    
-    def _batch_insert_image_data(self, manager: MilvusManager, parsed_data: List[dict], 
-                               embeddings: List) -> bool:
-        """批量插入图片数据"""
-        insert_chunk = 1000
-        insert_ok = True
-        
-        for i in tqdm(range(0, len(parsed_data), insert_chunk), desc="写入 Milvus(图片)", unit="chunk"):
-            part_data = parsed_data[i:i + insert_chunk]
-            part_emb = embeddings[i:i + insert_chunk]
-            ok = manager.insert_data(part_data, part_emb)
-            insert_ok = insert_ok and ok
-        
-        return insert_ok
     
     def update_documents_incremental(self, target_datasets: Optional[List[str]] = None, 
                                    max_documents_per_dataset: Optional[int] = None) -> dict:
@@ -396,6 +165,336 @@ def update_documents_incremental(target_datasets: Optional[List[str]] = None,
 
 
 def update_single_document(document_name: str, dataset_name: Optional[str] = None) -> bool:
-    """更新单个文档的便捷函数"""
-    from ultrasoundrag.core.document_updater import update_document_by_name
-    return update_document_by_name(document_name, dataset_name)
+    """更新单个文档的便捷函数 - 重构版本"""
+    from ...utils import setup_logger
+    from ...data.processors.database_operations import DatabaseOperations
+    from ...data.processors.embedding_generator import EmbeddingGenerator
+    
+    logger = setup_logger("SingleDocumentUpdater")
+    
+    try:
+        from ...config import config
+        from ...data.stores.milvus_store import MilvusManager
+        from ...data.loaders.markdown_parser import MarkdownParser
+        
+        # 如果没有指定数据集名称，使用默认值
+        if dataset_name is None:
+            dataset_name = "ultrasound_book"
+        
+        # 获取数据集配置
+        datasets = config.get('indexing', {}).get('markdown', {}).get('datasets', {})
+        if dataset_name not in datasets:
+            logger.error(f"未找到数据集配置: {dataset_name}")
+            return False
+        
+        dataset_config = datasets[dataset_name]
+        collection_name = dataset_config.get('collection_name', 'normal_book_md')
+        base_path = dataset_config.get('base_path', 'data/book/markdown')
+        
+        # 构建文件完整路径
+        file_path = os.path.join(base_path, document_name)
+        if not os.path.exists(file_path):
+            logger.error(f"文件不存在: {file_path}")
+            return False
+        
+        logger.info(f"开始更新文档: {document_name}")
+        
+        # 1. 连接到Milvus并删除旧内容
+        manager = MilvusManager(collection_type="md", collection_name=collection_name)
+        success, deleted_count = manager.delete_document_chunks(document_name)
+        
+        if success:
+            logger.info(f"成功删除 {deleted_count} 个旧chunk")
+        else:
+            logger.error("删除旧内容失败")
+            return False
+        
+        # 2. 重新解析文档
+        parser = MarkdownParser(dataset_name=dataset_name)
+        parsed_data = parser.parse_single_file(file_path)
+        
+        if not parsed_data:
+            logger.error("文档解析失败")
+            return False
+        
+        # 3. 生成嵌入向量
+        embedding_generator = EmbeddingGenerator()
+        embeddings_qwen, embeddings_clip = embedding_generator.generate_text_embeddings(parsed_data)
+        
+        # 4. 插入新数据
+        success = DatabaseOperations.batch_insert_with_progress(
+            manager, parsed_data, embeddings_qwen, embeddings_clip
+        )
+        
+        if success:
+            logger.info(f"成功添加 {len(parsed_data)} 个新chunk")
+            return True
+        else:
+            logger.error("添加新内容失败")
+            return False
+            
+    except Exception as e:
+        logger.error(f"更新文档时发生错误: {e}")
+        return False
+
+
+def delete_single_document(document_name: str, dataset_name: Optional[str] = None) -> bool:
+    """删除单个文档的便捷函数"""
+    from ...utils import setup_logger
+    logger = setup_logger("SingleDocumentDeleter")
+    
+    try:
+        from ...config import config
+        from ...data.stores.milvus_store import MilvusManager
+        
+        # 如果没有指定数据集名称，使用默认值
+        if dataset_name is None:
+            dataset_name = "ultrasound_book"
+        
+        # 获取数据集配置
+        datasets = config.get('indexing', {}).get('markdown', {}).get('datasets', {})
+        if dataset_name not in datasets:
+            logger.error(f"未找到数据集配置: {dataset_name}")
+            return False
+        
+        dataset_config = datasets[dataset_name]
+        collection_name = dataset_config.get('collection_name', 'normal_book_md')
+        
+        logger.info(f"开始删除文档: {document_name}")
+        
+        # 连接到Milvus并删除文档内容
+        manager = MilvusManager(collection_type="md", collection_name=collection_name)
+        success, deleted_count = manager.delete_document_chunks(document_name)
+        
+        if success:
+            logger.info(f"成功删除 {deleted_count} 个chunk")
+            return True
+        else:
+            logger.error("删除文档失败")
+            return False
+            
+    except Exception as e:
+        logger.error(f"删除文档时发生错误: {e}")
+        return False
+
+
+def delete_collection(collection_name: str, collection_type: str = None) -> bool:
+    """删除整个集合的便捷函数
+    
+    Args:
+        collection_name: 集合名称
+        collection_type: 集合类型（可选，仅用于日志记录）
+    """
+    from ...utils import setup_logger
+    logger = setup_logger("CollectionDeleter")
+    
+    try:
+        from ...data.stores.milvus_store import MilvusManager
+        
+        logger.info(f"开始删除集合: {collection_name}")
+        
+        # 连接到Milvus并删除集合（集合类型不影响删除操作）
+        manager = MilvusManager(collection_type=collection_type or "md", collection_name=collection_name)
+        manager.drop_collection()
+        
+        logger.info(f"成功删除集合: {collection_name}")
+        return True
+            
+    except Exception as e:
+        logger.error(f"删除集合时发生错误: {e}")
+        return False
+
+
+def delete_database(db_name: str) -> bool:
+    """删除整个数据库的便捷函数（极度危险操作）
+    
+    Args:
+        db_name: 数据库名称
+    """
+    from ...utils import setup_logger
+    logger = setup_logger("DatabaseDeleter")
+    
+    try:
+        from ...data.stores.milvus_store import MilvusManager
+        from ...config import config
+        
+        logger.warning(f"开始删除整个数据库: {db_name}")
+        logger.warning(f"这将删除数据库中的所有集合和数据！")
+        
+        # 获取Milvus配置
+        milvus_cfg = config.get('milvus', {})
+        
+        # 创建临时管理器来获取客户端
+        temp_manager = MilvusManager(collection_type="md", collection_name="temp", db_name=db_name)
+        client = temp_manager.client
+        
+        # 列出数据库中的所有集合
+        collections = client.list_collections()
+        logger.info(f"数据库 '{db_name}' 中的集合: {collections}")
+        
+        # 删除所有集合
+        for collection_name in collections:
+            logger.info(f"删除集合: {collection_name}")
+            client.drop_collection(collection_name)
+        
+        # 删除数据库
+        client.drop_database(db_name)
+        
+        logger.warning(f"成功删除数据库: {db_name}")
+        return True
+            
+    except Exception as e:
+        logger.error(f"删除数据库时发生错误: {e}")
+        return False
+
+
+def create_collection(collection_name: str, collection_type: str = "md", db_name: str = None) -> bool:
+    """创建新集合的便捷函数"""
+    from ...utils import setup_logger
+    logger = setup_logger("CollectionCreator")
+    
+    try:
+        from ...data.stores.milvus_store import MilvusManager
+        
+        logger.info(f"开始创建集合: {collection_name}")
+        
+        # 创建集合
+        manager = MilvusManager(collection_type=collection_type, collection_name=collection_name, db_name=db_name)
+        
+        logger.info(f"成功创建集合: {collection_name}")
+        return True
+            
+    except Exception as e:
+        logger.error(f"创建集合时发生错误: {e}")
+        return False
+
+
+def add_data_to_collection(data_path: str, collection_name: str, collection_type: str = "md", db_name: str = None) -> bool:
+    """将数据添加到指定集合的便捷函数 - 重构版本"""
+    from ...utils import setup_logger
+    from ...data.processors.database_operations import DatabaseOperations
+    from ...data.processors.embedding_generator import EmbeddingGenerator
+    
+    logger = setup_logger("DataAdder")
+    
+    try:
+        from ...data.stores.milvus_store import MilvusManager
+        from ...data.loaders.markdown_parser import MarkdownParser
+        from ...data.loaders.pdf_parser import PDFParser
+        from ...data.loaders.image_parser import ImageParser
+        
+        logger.info(f"开始将数据添加到集合: {collection_name}")
+        
+        # 创建管理器
+        manager = MilvusManager(collection_type=collection_type, collection_name=collection_name, db_name=db_name)
+        
+        # 根据集合类型选择解析器
+        if collection_type == "md":
+            parser = MarkdownParser()
+            parsed_data = parser.parse_single_file(data_path)
+        elif collection_type == "pdf":
+            parser = PDFParser()
+            parsed_data = parser.parse_single_file(data_path)
+        elif collection_type == "image":
+            parser = ImageParser()
+            parsed_data = parser.parse_single_file(data_path)
+        else:
+            logger.error(f"不支持的集合类型: {collection_type}")
+            return False
+        
+        if not parsed_data:
+            logger.error("数据解析失败")
+            return False
+        
+        # 生成嵌入向量并插入数据
+        embedding_generator = EmbeddingGenerator()
+        if collection_type in ["md", "pdf"]:
+            embeddings_qwen, embeddings_clip = embedding_generator.generate_text_embeddings(parsed_data)
+            success = DatabaseOperations.batch_insert_with_progress(
+                manager, parsed_data, embeddings_qwen, embeddings_clip
+            )
+        else:  # image
+            embeddings = embedding_generator.generate_image_embeddings(parsed_data)
+            success = DatabaseOperations.batch_insert_image_data(manager, parsed_data, embeddings)
+        
+        if success:
+            logger.info(f"成功添加 {len(parsed_data)} 个数据到集合: {collection_name}")
+            return True
+        else:
+            logger.error("添加数据失败")
+            return False
+            
+    except Exception as e:
+        logger.error(f"添加数据时发生错误: {e}")
+        return False
+
+
+def list_collections(db_name: str = None) -> List[str]:
+    """列出所有集合的便捷函数"""
+    from ...utils import setup_logger
+    logger = setup_logger("CollectionLister")
+    
+    try:
+        from ...data.stores.milvus_store import MilvusClient
+        from ...config import config
+        
+        # 直接创建客户端，不创建集合
+        milvus_cfg = config.get('milvus', {})
+        client = MilvusClient(uri=milvus_cfg['milvus_uri'], token=milvus_cfg['milvus_token'])
+        
+        # 切换到指定数据库
+        if db_name:
+            client.use_database(db_name)
+        else:
+            client.use_database(milvus_cfg['db_name'])
+        
+        collections = client.list_collections()
+        
+        logger.info(f"数据库中的集合: {collections}")
+        return collections
+            
+    except Exception as e:
+        logger.error(f"列出集合时发生错误: {e}")
+        return []
+
+
+def list_databases() -> List[str]:
+    """列出所有数据库的便捷函数"""
+    from ...utils import setup_logger
+    logger = setup_logger("DatabaseLister")
+    
+    try:
+        from ...data.stores.milvus_store import MilvusClient
+        from ...config import config
+        
+        # 直接创建客户端，不创建集合
+        milvus_cfg = config.get('milvus', {})
+        client = MilvusClient(uri=milvus_cfg['milvus_uri'], token=milvus_cfg['milvus_token'])
+        
+        databases = client.list_databases()
+        
+        logger.info(f"所有数据库: {databases}")
+        return databases
+            
+    except Exception as e:
+        logger.error(f"列出数据库时发生错误: {e}")
+        return []
+
+
+def get_collection_info(collection_name: str, db_name: str = None) -> Dict:
+    """获取集合信息的便捷函数"""
+    from ...utils import setup_logger
+    logger = setup_logger("CollectionInfoGetter")
+    
+    try:
+        from ...data.stores.milvus_store import MilvusManager
+        
+        # 创建管理器
+        manager = MilvusManager(collection_type="md", collection_name=collection_name, db_name=db_name)
+        info = manager.get_collection_info()
+        
+        return info
+            
+    except Exception as e:
+        logger.error(f"获取集合信息时发生错误: {e}")
+        return {}

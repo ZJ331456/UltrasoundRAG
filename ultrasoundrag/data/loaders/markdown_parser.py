@@ -28,7 +28,7 @@ class MarkdownParser:
         markdown_parse_cfg = config['indexing']['markdown_parse']
         
         dataset_cfg = markdown_cfg['datasets'][dataset_name]
-        self.base_md_path = dataset_cfg['base_md_path']
+        self.base_md_path = dataset_cfg['base_path']
         self.max_chunk_size = markdown_parse_cfg['max_chunk_size']
         self.overlap_ratio = markdown_parse_cfg.get('overlap_ratio', 0.1)  # 重叠比例，默认10%
         self.min_chunk_size = markdown_parse_cfg.get('min_chunk_size', 100)  # 最小块大小
@@ -78,6 +78,44 @@ class MarkdownParser:
                 all_chunks.append(chunk)
         
         print(f"总共解析了 {len(all_chunks)} 个文档块")
+        return all_chunks
+    
+    def parse_single_file(self, file_path: str) -> List[Dict]:
+        """
+        解析单个Markdown文件
+        
+        Args:
+            file_path: 文件完整路径
+            
+        Returns:
+            处理后的文档块列表
+        """
+        if not os.path.exists(file_path):
+            print(f"文件不存在: {file_path}")
+            return []
+        
+        print(f"处理单个文件: {file_path}")
+        chunks = self.process_document(file_path)
+        all_chunks = []
+        chunk_id = 1
+        
+        for chunk in chunks:
+            chunk['id'] = chunk_id
+            chunk['md_file'] = os.path.relpath(file_path, self.base_md_path)
+            chunk['document_name'] = os.path.basename(file_path).replace('.md', '')
+            
+            # 处理图片信息（统一命名：image_paths / image_captions）
+            if chunk.get('origin_image_caption'):
+                chunk['image_paths'] = [chunk.get('image_url', '')]
+                chunk['image_captions'] = [chunk.get('origin_image_caption', '')]
+            else:
+                chunk['image_paths'] = []
+                chunk['image_captions'] = []
+            
+            chunk_id += 1
+            all_chunks.append(chunk)
+        
+        print(f"单个文件解析了 {len(all_chunks)} 个文档块")
         return all_chunks
     
     def extract_title_and_content(self, text: str) -> List[Dict]:

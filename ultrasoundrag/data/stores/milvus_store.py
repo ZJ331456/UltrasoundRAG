@@ -689,12 +689,8 @@ class MilvusManager:
     def search_with_filter(self, filter_expr: str, limit: int = 10, output_fields: Optional[List[str]] = None) -> List[Dict]:
         """仅基于标量过滤的查询（用于caption模糊匹配等）。"""
         if not output_fields:
-            # 默认：返回集合中实际存在的全部字段（更稳健，兼容旧集合字段名不一致的情况）
-            existing = list(self._get_collection_fields() or [])
-            if self.domain_field_name not in existing:
-                existing.append(self.domain_field_name)
-            # 如果拿不到字段列表，则传 None 让 Milvus 返回全部字段
-            output_fields = existing if existing else None
+            # 强制返回所有字段，不依赖字段检测
+            output_fields = None
         # 自动追加软删除过滤（兼容 None）
         composed_filter = (filter_expr or "").strip()
         if self._has_field("is_deleted"):
@@ -772,7 +768,8 @@ class MilvusManager:
         """查找特定文档的所有chunk片段"""
         try:
             if self.collection_type in ["md", "pdf"]:
-                filter_expr = f'document_name == "{document_name}"'
+                # 尝试使用md_file字段查询
+                filter_expr = f'md_file == "{document_name}"'
             else:
                 filter_expr = f'source == "{document_name}"'
             

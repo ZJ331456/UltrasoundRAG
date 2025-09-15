@@ -19,7 +19,6 @@ import sys
 from typing import List, Optional
 
 # 主要API导入
-from .api import UltrasoundRAG, SimpleRAG, QuickStart
 from .core import (
     build_markdown_index, build_image_index, build_all_indexes,
     run_retrieval_test, run_multi_database_test, run_caption_test,
@@ -66,14 +65,12 @@ def test_search(top_k: int = 3):
 def test_enhanced_features(query: str = "心脏超声图像", db_name: str = "default", top_k: int = 5):
     """测试所有增强功能 - 兼容接口"""
     try:
-        # 使用新的API进行增强功能测试
-        rag = UltrasoundRAG(db_name=db_name)
-        result = rag.search(query, mode="auto", top_k=top_k)
+        # 使用检索测试功能
+        result = run_retrieval_test(db_name=db_name, top_k=top_k)
         
         print(f"\n✅ 增强功能测试完成!")
         print(f"   查询: '{query}'")
-        print(f"   找到结果: {result.total_count} 个")
-        print(f"   响应时间: {result.search_time:.3f}s")
+        print(f"   测试结果: {result}")
         
         return {'success': True, 'result': result}
         
@@ -116,18 +113,15 @@ def quick_start():
     
     # 演示基本功能
     try:
-        # 使用QuickStart类
-        success, results = QuickStart.setup_and_search("心脏超声检查", build_index=False)
+        # 运行检索测试
+        result = run_retrieval_test(db_name="default", top_k=3)
         
-        if success:
-            print(f"✅ 快速搜索成功，找到 {len(results)} 个结果")
-        else:
-            print("❌ 快速搜索失败，可能需要先构建索引")
-            print("💡 请运行: python -m ultrasoundrag index --build-all")
-    
+        print(f"✅ 快速搜索成功，测试结果: {result}")
+        
     except Exception as e:
-        print(f"❌ 快速开始失败: {e}")
-        print("💡 请检查配置和依赖是否正确安装")
+        print(f"❌ 快速搜索失败: {e}")
+        print("💡 请先运行重建命令构建索引")
+        print("💡 重建命令: python -c \"from ultrasoundrag.core.indexing import build_all_indexes; build_all_indexes(recreate=True)\"")
 
 
 def main(args: Optional[List[str]] = None):

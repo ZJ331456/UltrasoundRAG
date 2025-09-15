@@ -36,7 +36,12 @@ indexing:
   pdf_parse:
     max_chunk_size: 1500 #单个chunk的大小 
     overlap_ratio: 0.15  #重叠窗口比例，15%可以保持较好的语义连续性
-    min_chunk_size: 100  #最小chunk大小，避免过短的无意义片段 
+    min_chunk_size: 100  #最小chunk大小，避免过短的无意义片段
+    # PaddleOCR模型配置
+    paddleocr:
+      model_dir: "models/paddleocr"  # PaddleOCR模型存储目录
+      use_angle_cls: true  # 是否使用角度分类器
+      lang: "ch"  # 语言设置，ch表示中文 
 
   markdown:
     # collections: "markdown_index"  # 默认集合名（可被每个数据集的 collection_name 覆盖）
@@ -70,7 +75,7 @@ indexing:
         description: "超声书籍图片数据集"
       ultrasound_clinical: 
         enabled: false
-        base_image_path: ""
+        base_path: ""
         image_index_path: ""
         collection_name: "ultrasound_clinical_image"
         description: "临床超声图片数据集"

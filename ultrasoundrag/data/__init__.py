@@ -13,6 +13,19 @@ from .loaders import (
     DocumentLoader
 )
 
+from .processors import (
+    TextProcessor,
+    ImageProcessor,
+    EmbeddingProcessor,
+    DataCleaner,
+    BatchProcessor
+)
+
+# 新增的处理器模块
+from .processors.database_operations import DatabaseOperations
+from .processors.embedding_generator import EmbeddingGenerator
+from .processors.dataset_builder import DatasetBuilder
+
 from .stores import (
     MilvusManager,
     FileStore,
@@ -23,7 +36,16 @@ __all__ = [
     'MarkdownParser',
     'ImageParser', 
     'DocumentLoader',
+    'TextProcessor',
+    'ImageProcessor',
+    'EmbeddingProcessor',
+    'DataCleaner',
+    'BatchProcessor',
     'MilvusManager',
     'FileStore',
-    'CacheStore'
+    'CacheStore',
+    # 新增的处理器模块
+    'DatabaseOperations',
+    'EmbeddingGenerator',
+    'DatasetBuilder'
 ]

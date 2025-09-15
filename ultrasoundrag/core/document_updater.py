@@ -25,8 +25,16 @@ class UpdateStats:
     deleted_files: int = 0
     unchanged_files: int = 0
     failed_files: int = 0
+    total_documents: int = 0
+    added_documents: int = 0
+    failed_documents: int = 0
     start_time: float = 0
     end_time: float = 0
+    errors: List[str] = None
+    
+    def __post_init__(self):
+        if self.errors is None:
+            self.errors = []
     
     @property
     def duration(self) -> float:
@@ -213,24 +221,85 @@ class DocumentUpdateManager:
     
     def _process_file(self, full_path: str, relative_path: str, file_info: Dict[str, Any]):
         """处理单个文件"""
-        # 这里需要根据文件类型调用相应的处理器
-        # 由于这是一个通用的更新管理器，具体的处理逻辑应该由调用者提供
-        self.logger.debug(f"处理文件: {relative_path}")
+        self.logger.info(f"处理文件: {relative_path}")
         
-        # 这里可以添加具体的文档处理逻辑
-        # 例如：解析markdown、提取文本、生成嵌入等
-        pass
+        try:
+            # 根据文件类型选择处理器
+            if relative_path.endswith('.md'):
+                self._process_markdown_file(full_path, relative_path)
+            else:
+                self.logger.warning(f"不支持的文件类型: {relative_path}")
+                
+        except Exception as e:
+            self.logger.error(f"处理文件失败 {relative_path}: {e}")
+            raise
+    
+    def _process_markdown_file(self, full_path: str, relative_path: str):
+        """处理Markdown文件"""
+        from ..data.loaders.markdown_parser import MarkdownParser
+        
+        # 创建Markdown解析器
+        parser = MarkdownParser(self.dataset_name)
+        
+        # 解析文件
+        chunks = parser.parse_single_file(full_path)
+        
+        if not chunks:
+            self.logger.warning(f"文件解析结果为空: {relative_path}")
+            return
+        
+        # 删除旧数据（如果存在）
+        self._delete_file_from_collection(relative_path)
+        
+        # 插入新数据
+        self._insert_chunks_to_collection(chunks, relative_path)
+        
+        self.logger.info(f"成功处理文件: {relative_path}, 生成 {len(chunks)} 个chunks")
+    
+    def _insert_chunks_to_collection(self, chunks: List[Dict], relative_path: str):
+        """将chunks插入到集合中"""
+        try:
+            # 准备数据
+            data = []
+            for chunk in chunks:
+                data.append({
+                    'content': chunk['content'],
+                    'metadata': {
+                        'md_file': relative_path,
+                        'chunk_id': chunk.get('chunk_id', ''),
+                        'section': chunk.get('section', ''),
+                        'page': chunk.get('page', 0)
+                    }
+                })
+            
+            # 插入到Milvus
+            result = self.milvus_manager.insert_documents(self.collection_name, data)
+            self.logger.info(f"插入 {len(data)} 个chunks到集合 {self.collection_name}")
+            
+        except Exception as e:
+            self.logger.error(f"插入chunks失败: {e}")
+            raise
+    
+    def batch_update_documents(self, max_documents: Optional[int] = None) -> UpdateStats:
+        """批量更新文档（增量更新）"""
+        base_path = self.dataset_config.get('base_path', '')
+        extensions = self.dataset_config.get('file_extensions', ['.md'])
+        
+        # 转换扩展名格式
+        ext_list = [ext.lstrip('.') for ext in extensions]
+        
+        return self.update_documents(base_path, ext_list)
     
     def _delete_file_from_collection(self, file_path: str):
         """从集合中删除文件"""
         try:
-            # 构建删除条件
-            expr = f'relative_path == "{file_path}"'
+            # 使用现有的删除方法
+            success, count = self.milvus_manager.delete_document_chunks(file_path)
             
-            # 从Milvus中删除
-            result = self.milvus_manager.delete_entities(self.collection_name, expr)
-            
-            self.logger.info(f"删除文件 {file_path}: {result}")
+            if success:
+                self.logger.info(f"删除文件 {file_path}: 成功删除 {count} 个chunks")
+            else:
+                self.logger.warning(f"删除文件 {file_path}: 未找到相关数据")
             
         except Exception as e:
             self.logger.error(f"删除文件失败 {file_path}: {e}")
