@@ -3,16 +3,135 @@
   "retrieval_type": "i2t",
   "results": [
     {
-      "doc_id": "7722",
-      "score": 0.22826898097991943,
-      "content": "边界多清楚，少数可见周边有浅淡的低回声环绕。后方回声不衰减也不增强。",
+      "doc_id": "2957",
+      "score": 0.25227606296539307,
+      "content": "颗粒细胞瘤于1926年首先由Abrikossoff描述，近年来免疫组化研究结果证实该肿瘤属于神经组织源性软组织肿瘤。本病好发年龄为 $40\\sim60$ 岁，女性发病率是男性的3倍。颗粒细胞瘤有良性与恶性之分，恶性极为罕见，约占 $1\\%\\sim3\\%$ 。全身都可发生，头颈部、口腔最多见（约占 $50\\%$ ），常发生于皮肤和皮下组织，其中舌和颊黏膜最易受累，发生于四肢骨骼肌者罕见。\n声像图表现：软组织内低回声肿物，内部回声均匀；由于瘤体与其他组织相移行、浸润，超声表现为无包膜，边界不清，边缘不规则（图13-19）。浸润的肿瘤组织与正常组织构成了复杂的高阻抗差界面，使肿瘤周边呈不均匀的回声增高，类似浸润性乳腺癌边缘的声像图表现。肿瘤内间质成分较少，主要为密集的细胞成分，使声衰减较少，使其表现为后方回声增强。CDFI血流信号不丰富。颗粒细胞瘤多发生于细小神经，肿瘤与其周围神经的关系很难显示。超声可以清晰地显示颗粒细胞瘤，并且能提示病变与周围组织的关系。颗粒细胞瘤没有特征性的声像图表现，超声引导下穿刺组织学活检很有必要。\n<image src=\"/api/images/755c2d7f7961d21066e7ebb30e97ab03f5a018f57d1223902315e5a8ccbe6b54.jpg\" caption=\"图13-18 女；图13-19 女\"/>\n图13-18 女，36岁，结节性筋膜炎\n自述输液后2周内前臂出现肿物。超声检查于右前臂屈侧深筋膜内显示略呈椭圆形的不均匀回声结节，内部可见条索样强回声分隔，结合病史符合结节性筋膜炎表现，随访2个月，结节消失\n<image src=\"/api/images/755c2d7f7961d21066e7ebb30e97ab03f5a018f57d1223902315e5a8ccbe6b54.jpg\" caption=\"图片2\"/>\n图13-19 女，59岁，臀部颗粒细胞瘤术后\n于大腿扪及肿物，声像图显示肌肉层内低回声占位病变（M），内部回声均匀。病变两极边界不清，与肌纤维交织分布",
       "metadata": {
-        "title": "3.边缘及后方回声",
-        "md_file": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版.md",
-        "document_name": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版",
-        "chunk_index": 283,
+        "title": "（九）颗粒细胞瘤",
+        "file": "02_浅表诊断.md",
+        "document_name": "02_浅表诊断",
+        "chunk_index": 1444,
         "image_links": [],
+        "image_paths": [
+          "https://cdn-mineru.openxlab.org.cn/extract/8c22f91b-a409-4c90-984b-4d27a7e0bb62/4d4f7db07a63c280ef245077fcc39573cbe8c7b5005b46a30ea1511698e3396c.jpg；https://cdn-mineru.openxlab.org.cn/extract/8c22f91b-a409-4c90-984b-4d27a7e0bb62/755c2d7f7961d21066e7ebb30e97ab03f5a018f57d1223902315e5a8ccbe6b54.jpg"
+        ],
+        "image_captions": [
+          "图13-18 女；图13-19 女"
+        ],
+        "original_content": "颗粒细胞瘤于1926年首先由Abrikossoff描述，近年来免疫组化研究结果证实该肿瘤属于神经组织源性软组织肿瘤。本病好发年龄为 $40\\sim60$ 岁，女性发病率是男性的3倍。颗粒细胞瘤有良性与恶性之分，恶性极为罕见，约占 $1\\%\\sim3\\%$ 。全身都可发生，头颈部、口腔最多见（约占 $50\\%$ ），常发生于皮肤和皮下组织，其中舌和颊黏膜最易受累，发生于四肢骨骼肌者罕见。\n声像图表现：软组织内低回声肿物，内部回声均匀；由于瘤体与其他组织相移行、浸润，超声表现为无包膜，边界不清，边缘不规则（图13-19）。浸润的肿瘤组织与正常组织构成了复杂的高阻抗差界面，使肿瘤周边呈不均匀的回声增高，类似浸润性乳腺癌边缘的声像图表现。肿瘤内间质成分较少，主要为密集的细胞成分，使声衰减较少，使其表现为后方回声增强。CDFI血流信号不丰富。颗粒细胞瘤多发生于细小神经，肿瘤与其周围神经的关系很难显示。超声可以清晰地显示颗粒细胞瘤，并且能提示病变与周围组织的关系。颗粒细胞瘤没有特征性的声像图表现，超声引导下穿刺组织学活检很有必要。\n![](https://cdn-mineru.openxlab.org.cn/extract/8c22f91b-a409-4c90-984b-4d27a7e0bb62/4d4f7db07a63c280ef245077fcc39573cbe8c7b5005b46a30ea1511698e3396c.jpg)\n图13-18 女，36岁，结节性筋膜炎\n自述输液后2周内前臂出现肿物。超声检查于右前臂屈侧深筋膜内显示略呈椭圆形的不均匀回声结节，内部可见条索样强回声分隔，结合病史符合结节性筋膜炎表现，随访2个月，结节消失\n![](https://cdn-mineru.openxlab.org.cn/extract/8c22f91b-a409-4c90-984b-4d27a7e0bb62/755c2d7f7961d21066e7ebb30e97ab03f5a018f57d1223902315e5a8ccbe6b54.jpg)\n图13-19 女，59岁，臀部颗粒细胞瘤术后\n于大腿扪及肿物，声像图显示肌肉层内低回声占位病变（M），内部回声均匀。病变两极边界不清，与肌纤维交织分布",
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_text",
+        "result_type": "text",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_md",
+      "retrieval_type": "image_to_text"
+    },
+    {
+      "doc_id": "7446",
+      "score": 0.2389606237411499,
+      "content": "第一节 肾脏、肾上腺、输尿管解剖及正常声像图 .148\n第二节 肾脏先天性异常 ：149\n第三节 肾脏含液性病变 152\n第四节 肾脏肿瘤 .154\n第五节 肾结石 .157\n第六节 肾创伤 .157\n第七节 移植肾 .158\n第八节 肾下垂 .158\n第九节 肾周围炎及肾周脓肿 .159\n第十节 输尿管结石 .159\n第十一节 输尿管囊肿 .160\n第十二节 输尿管肿瘤 .160\n第十三节 肾上腺肿瘤 .161\n第十四节 肾上腺囊肿 .164",
+      "metadata": {
+        "title": "第七章肾脏、输尿管、肾上腺超声检查技巧与鉴别诊断. 148",
+        "file": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版.md",
+        "document_name": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版",
+        "chunk_index": 7,
+        "image_links": [],
+        "image_paths": [],
         "image_captions": [],
+        "original_content": "第一节 肾脏、肾上腺、输尿管解剖及正常声像图 .148\n第二节 肾脏先天性异常 ：149\n第三节 肾脏含液性病变 152\n第四节 肾脏肿瘤 .154\n第五节 肾结石 .157\n第六节 肾创伤 .157\n第七节 移植肾 .158\n第八节 肾下垂 .158\n第九节 肾周围炎及肾周脓肿 .159\n第十节 输尿管结石 .159\n第十一节 输尿管囊肿 .160\n第十二节 输尿管肿瘤 .160\n第十三节 肾上腺肿瘤 .161\n第十四节 肾上腺囊肿 .164",
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_text",
+        "result_type": "text",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_md",
+      "retrieval_type": "image_to_text"
+    },
+    {
+      "doc_id": "8561",
+      "score": 0.23855260014533997,
+      "content": "膀胱是胎儿盆腔或下腹部的无回声结构（图10-31），12周后开始显示。膀胱未排尿时较大，排尿后变小，正常膀胱每 $20\\sim45$ 分钟充盈和排气1次，正常膀胱直径在 $50~\\mathrm{mm}$ 以内，过大的膀胱需动态观察有无缩小。\n<image src=\"/api/images/dce110fc0797ab15ac0f766e232fa8f35a4320b9e492670e67cc456ff9638ace.jpg\" caption=\"图10-31 膀胱\"/>\n图10-31 膀胱\n胎儿腹部纵切面显示图显示盆腔和下腹部的膀胱（BL）",
+      "metadata": {
+        "title": "",
+        "file": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版.md",
+        "document_name": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版",
+        "chunk_index": 1122,
+        "image_links": [],
+        "image_paths": [
+          "https://cdn-mineru.openxlab.org.cn/extract/81fc4df0-0e14-44a2-bf68-632123c68d0f/dce110fc0797ab15ac0f766e232fa8f35a4320b9e492670e67cc456ff9638ace.jpg"
+        ],
+        "image_captions": [
+          "图10-31 膀胱"
+        ],
+        "original_content": "膀胱是胎儿盆腔或下腹部的无回声结构（图10-31），12周后开始显示。膀胱未排尿时较大，排尿后变小，正常膀胱每 $20\\sim45$ 分钟充盈和排气1次，正常膀胱直径在 $50~\\mathrm{mm}$ 以内，过大的膀胱需动态观察有无缩小。\n![](https://cdn-mineru.openxlab.org.cn/extract/81fc4df0-0e14-44a2-bf68-632123c68d0f/dce110fc0797ab15ac0f766e232fa8f35a4320b9e492670e67cc456ff9638ace.jpg)\n图10-31 膀胱\n胎儿腹部纵切面显示图显示盆腔和下腹部的膀胱（BL）",
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_text",
+        "result_type": "text",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_md",
+      "retrieval_type": "image_to_text"
+    },
+    {
+      "doc_id": "5546",
+      "score": 0.2355816811323166,
+      "content": "腋窝包虫病极为罕见。目前文献仅见1例报道，多以发现包块就诊。本例报道左侧腋窝包块为多囊型，大的囊肿内有多个大小不等圆形小囊，呈葡萄状或蜂窝状，偶见小囊中又有更小的囊，形成“囊中囊”征象；根据流行病史，结合超声显示腋窝包块具有囊型包虫病的超声特征，应考虑本病的可能（图20-5-74）。\n<image src=\"/api/images/c7cc6ddd5c5b508a4dec392d111371d1eecea104584b33fdf4912ab095225481.jpg\" caption=\"图20-5-74 腋窝包虫图显示呈多囊性\"/>\n图20-5-74　腋窝包虫图显示呈多囊性",
+      "metadata": {
+        "title": "第 20 章  肝脏疾病",
+        "file": "05_超声医学第七版上册.md",
+        "document_name": "05_超声医学第七版上册",
+        "chunk_index": 2263,
+        "image_links": [],
+        "image_paths": [
+          "https://cdn-mineru.openxlab.org.cn/extract/4bbd8440-f82f-4aaf-aece-05c94426d01e/c7cc6ddd5c5b508a4dec392d111371d1eecea104584b33fdf4912ab095225481.jpg"
+        ],
+        "image_captions": [
+          "图20-5-74 腋窝包虫图显示呈多囊性"
+        ],
+        "original_content": "腋窝包虫病极为罕见。目前文献仅见1例报道，多以发现包块就诊。本例报道左侧腋窝包块为多囊型，大的囊肿内有多个大小不等圆形小囊，呈葡萄状或蜂窝状，偶见小囊中又有更小的囊，形成“囊中囊”征象；根据流行病史，结合超声显示腋窝包块具有囊型包虫病的超声特征，应考虑本病的可能（图20-5-74）。\n![](https://cdn-mineru.openxlab.org.cn/extract/4bbd8440-f82f-4aaf-aece-05c94426d01e/c7cc6ddd5c5b508a4dec392d111371d1eecea104584b33fdf4912ab095225481.jpg)\n图20-5-74　腋窝包虫图显示呈多囊性",
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_text",
+        "result_type": "text",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_md",
+      "retrieval_type": "image_to_text"
+    },
+    {
+      "doc_id": "7445",
+      "score": 0.22984002530574799,
+      "content": "第十六节 阑尾炎及阑尾脓肿 .137\n第十七节 克罗恩病 .138\n第十八节 肛周脓肿及肛瘘 .140\n第十九节 其他肠道疾病 143",
+      "metadata": {
+        "title": "",
+        "file": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版.md",
+        "document_name": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版",
+        "chunk_index": 6,
+        "image_links": [],
+        "image_paths": [],
+        "image_captions": [],
+        "original_content": "第十六节 阑尾炎及阑尾脓肿 .137\n第十七节 克罗恩病 .138\n第十八节 肛周脓肿及肛瘘 .140\n第十九节 其他肠道疾病 143",
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_text",
+        "result_type": "text",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_md",
+      "retrieval_type": "image_to_text"
+    },
+    {
+      "doc_id": "1379",
+      "score": 0.22774943709373474,
+      "content": "损伤时患者常突然感觉小腿后部中1/3处疼痛，后迅速出现小腿肿胀、局部皮肤瘀斑。查体可见小腿后部肿胀，腓肠肌内侧头走行区压痛显著。患肢常不能负重站立或趾尖站立。撕裂范围较小时，可采取休息、冰敷等措施，而较大范围的撕裂常需要抗感染、抗凝血、局部固定等治疗。少数情况如并发筋膜间隔综合征才考虑手术治疗。",
+      "metadata": {
+        "title": "第 12 章  膝部超声诊断",
+        "file": "10_肌骨诊断.md",
+        "document_name": "10_肌骨诊断",
+        "chunk_index": 518,
+        "image_links": [],
+        "image_paths": [],
+        "image_captions": [],
+        "original_content": "损伤时患者常突然感觉小腿后部中1/3处疼痛，后迅速出现小腿肿胀、局部皮肤瘀斑。查体可见小腿后部肿胀，腓肠肌内侧头走行区压痛显著。患肢常不能负重站立或趾尖站立。撕裂范围较小时，可采取休息、冰敷等措施，而较大范围的撕裂常需要抗感染、抗凝血、局部固定等治疗。少数情况如并发筋膜间隔综合征才考虑手术治疗。",
         "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
         "search_strategy": "image_to_text",
         "result_type": "text",
@@ -27,11 +146,13 @@
       "content": "眼眶横纹肌肉瘤自出生至成年人均可发生，但多见于10岁以下的儿童，平均7～8岁，是儿童时期最常见的眶内恶性肿瘤。进展迅速，如不及时治疗，多在1年内死亡。\n发展迅速的眼球突出和眶部肿物是该病最显著的特征。肿瘤常发生在眼眶上部，眼球突出伴向下移位，眼脸隆起，遮盖眼球。肿瘤位于肌锥内者，常发生眼球轴性突出。部分病人就诊时，眼球突出于脸裂外，结膜充血坏死，角膜暴露干燥。眼脸充血水肿，皮温升高。肿瘤迅速生长引起的继发改变，包括视力下降或丧失，眼球运动障碍，眼脸、结膜坏死感染及肿瘤压迫造成的眼底改变等。肿块可侵犯邻近副鼻窦和鼻腔。",
       "metadata": {
         "title": "【临床表现】",
-        "md_file": "02_浅表诊断.md",
+        "file": "02_浅表诊断.md",
         "document_name": "02_浅表诊断",
         "chunk_index": 181,
         "image_links": [],
+        "image_paths": [],
         "image_captions": [],
+        "original_content": "眼眶横纹肌肉瘤自出生至成年人均可发生，但多见于10岁以下的儿童，平均7～8岁，是儿童时期最常见的眶内恶性肿瘤。进展迅速，如不及时治疗，多在1年内死亡。\n发展迅速的眼球突出和眶部肿物是该病最显著的特征。肿瘤常发生在眼眶上部，眼球突出伴向下移位，眼脸隆起，遮盖眼球。肿瘤位于肌锥内者，常发生眼球轴性突出。部分病人就诊时，眼球突出于脸裂外，结膜充血坏死，角膜暴露干燥。眼脸充血水肿，皮温升高。肿瘤迅速生长引起的继发改变，包括视力下降或丧失，眼球运动障碍，眼脸、结膜坏死感染及肿瘤压迫造成的眼底改变等。肿块可侵犯邻近副鼻窦和鼻腔。",
         "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
         "search_strategy": "image_to_text",
         "result_type": "text",
@@ -41,18 +162,64 @@
       "retrieval_type": "image_to_text"
     },
     {
-      "doc_id": "2421",
-      "score": 0.2228405922651291,
-      "content": "乳腺癌肉瘤好发于中老年妇女，病程可由数周至数十年不等。乳房内肿块质地硬，边界清，多数可活动，少数可与皮肤粘连，生长较快，常见腋窝淋巴结车\n![](https://cdn-mineru.openxlab.org.cn/extract/8c22f91b-a409-4c90-984b-4d27a7e0bb62/f5b0049689d722db00e22d971a2a40d17900efc3b12517d69a8e9cc97d1c3669.jpg)\n图6-196 乳腺血管肉瘤典型的大体形态",
+      "doc_id": "7717",
+      "score": 0.22080287337303162,
+      "content": "边界清楚，边缘多不规则，多无明确包膜， 但可见浅淡的低回声晕环。后方回声稍增强",
       "metadata": {
-        "title": "【临床表现】",
-        "md_file": "02_浅表诊断.md",
-        "document_name": "02_浅表诊断",
-        "chunk_index": 908,
+        "title": "3.边缘和后方回声",
+        "file": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版.md",
+        "document_name": "07_腹部超声检查技巧与鉴别诊断—林红军等主编2015.6出版",
+        "chunk_index": 278,
         "image_links": [],
-        "image_captions": [
-          "图6-196 乳腺血管肉瘤典型的大体形态"
+        "image_paths": [],
+        "image_captions": [],
+        "original_content": "边界清楚，边缘多不规则，多无明确包膜， 但可见浅淡的低回声晕环。后方回声稍增强",
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_text",
+        "result_type": "text",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_md",
+      "retrieval_type": "image_to_text"
+    },
+    {
+      "doc_id": "11315",
+      "score": 0.22059793770313263,
+      "content": "蜂窝织炎（cellulitis）是皮肤、皮下组织的急性感染性疾病，可分为原发性或继发性，前者由脓血症经血道感染而引起；后者为骨、关节或其他化脓性感染（如骨髓炎、化脓性关节炎、疖、淋巴结炎等）扩散而来。其也可由外伤血肿、局部刺伤（包括注射）、寄生虫和异物等外源性感染引起。糖尿病、HIV感染者、久用皮质类固醇者更易发生。临床表现：病区局部有明显的红、肿、热、痛炎症症状，脓肿形成时可有波动，并伴有发热、不适等全身症状及血白细胞增高。声像图表现（图34-10-1）：蜂窝织炎在形成皮下脓肿前，仅为病区皮肤、皮下脂肪层弥漫性水肿增厚，回声增高，皮下组织与其深面肌层间的界限消失，或在筋膜面出现条状积液无回声，平行于皮肤表面，有时可伴有深筋膜增厚。病区外周无明显边界，从水肿区逐渐向正常组织移行；脓肿形成后，可见孤立的或带有间隔的无回声区，脓腔内回声不均匀，有不规则的脓肿壁，其深度不超过浅筋膜面。CDFI及PDI：病区血流信号增多（图34-10-1B），可引起区域性淋巴结肿大。急性蜂窝织炎需要与深部血栓性静脉炎引起的软组织水肿鉴别，后者无急性炎症表现，受累部位皮肤弥漫性肿胀，皮下脂肪间疏松结缔组织从筋膜层起始呈网状或栅栏状低回声，包围高回声脂肪小叶。受累静脉内可见血栓回声、CDFI血流信号消失。\n<image src=\"/api/images/fa48c1ed595a884a6cbacaadd88004abfdb366a87eb611e90465d2f4ff71d363.jpg\" caption=\"图34-10-1 蜂窝织炎声像图\"/>\n图34-10-1　蜂窝织炎声像图\nA.二维超声图像；B.CDFI图，血流信号增多",
+      "metadata": {
+        "title": "第 34 章  肌肉骨骼系统疾病",
+        "file": "12_超声医学第七版下册.md",
+        "document_name": "12_超声医学第七版下册",
+        "chunk_index": 1706,
+        "image_links": [],
+        "image_paths": [
+          "https://cdn-mineru.openxlab.org.cn/extract/01900783-8c32-43a4-b687-ccf30c815580/fa48c1ed595a884a6cbacaadd88004abfdb366a87eb611e90465d2f4ff71d363.jpg"
         ],
+        "image_captions": [
+          "图34-10-1 蜂窝织炎声像图"
+        ],
+        "original_content": "蜂窝织炎（cellulitis）是皮肤、皮下组织的急性感染性疾病，可分为原发性或继发性，前者由脓血症经血道感染而引起；后者为骨、关节或其他化脓性感染（如骨髓炎、化脓性关节炎、疖、淋巴结炎等）扩散而来。其也可由外伤血肿、局部刺伤（包括注射）、寄生虫和异物等外源性感染引起。糖尿病、HIV感染者、久用皮质类固醇者更易发生。临床表现：病区局部有明显的红、肿、热、痛炎症症状，脓肿形成时可有波动，并伴有发热、不适等全身症状及血白细胞增高。声像图表现（图34-10-1）：蜂窝织炎在形成皮下脓肿前，仅为病区皮肤、皮下脂肪层弥漫性水肿增厚，回声增高，皮下组织与其深面肌层间的界限消失，或在筋膜面出现条状积液无回声，平行于皮肤表面，有时可伴有深筋膜增厚。病区外周无明显边界，从水肿区逐渐向正常组织移行；脓肿形成后，可见孤立的或带有间隔的无回声区，脓腔内回声不均匀，有不规则的脓肿壁，其深度不超过浅筋膜面。CDFI及PDI：病区血流信号增多（图34-10-1B），可引起区域性淋巴结肿大。急性蜂窝织炎需要与深部血栓性静脉炎引起的软组织水肿鉴别，后者无急性炎症表现，受累部位皮肤弥漫性肿胀，皮下脂肪间疏松结缔组织从筋膜层起始呈网状或栅栏状低回声，包围高回声脂肪小叶。受累静脉内可见血栓回声、CDFI血流信号消失。\n![](https://cdn-mineru.openxlab.org.cn/extract/01900783-8c32-43a4-b687-ccf30c815580/fa48c1ed595a884a6cbacaadd88004abfdb366a87eb611e90465d2f4ff71d363.jpg)\n图34-10-1　蜂窝织炎声像图\nA.二维超声图像；B.CDFI图，血流信号增多",
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_text",
+        "result_type": "text",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_md",
+      "retrieval_type": "image_to_text"
+    },
+    {
+      "doc_id": "7135",
+      "score": 0.21653881669044495,
+      "content": "大约80%的唾液腺结石（sialolithiasis）发生于颌下腺，腮腺少见（约占10%，多见于中青年人。唾液腺结石位于腺导管内，单发或多发，常伴发唾液腺炎症。结石早期多无症状，结石阻塞时，唾液淤滞，引起局部胀痛，进餐时症状加重，并反复发作。",
+      "metadata": {
+        "title": "目录",
+        "file": "06_医学超声影像学.md",
+        "document_name": "06_医学超声影像学",
+        "chunk_index": 1432,
+        "image_links": [],
+        "image_paths": [],
+        "image_captions": [],
+        "original_content": "大约80%的唾液腺结石（sialolithiasis）发生于颌下腺，腮腺少见（约占10%，多见于中青年人。唾液腺结石位于腺导管内，单发或多发，常伴发唾液腺炎症。结石早期多无症状，结石阻塞时，唾液淤滞，引起局部胀痛，进餐时症状加重，并反复发作。",
         "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
         "search_strategy": "image_to_text",
         "result_type": "text",
@@ -62,16 +229,142 @@
       "retrieval_type": "image_to_text"
     }
   ],
-  "total_results": 3,
+  "total_results": 10,
   "matched_images": [
     {
-      "doc_id": "1182",
+      "doc_id": "324",
       "score": 1.0,
-      "content": "图6-196 乳腺血管肉瘤典型的大体形态",
+      "content": "图10-9 耻骨联合上膀胱纵切面",
       "metadata": {
-        "image_path": "02_实用浅表/图片00694.jpg",
-        "caption": "图6-196 乳腺血管肉瘤典型的大体形态",
+        "image_path": "01_超声标准切面/图片00319.jpg",
+        "caption": "图10-9 耻骨联合上膀胱纵切面",
+        "source": "01_超声标准切面.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    },
+    {
+      "doc_id": "325",
+      "score": 1.0,
+      "content": "图10-10 耻骨联合上膀胱横切面",
+      "metadata": {
+        "image_path": "01_超声标准切面/图片00320.jpg",
+        "caption": "图10-10 耻骨联合上膀胱横切面",
+        "source": "01_超声标准切面.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    },
+    {
+      "doc_id": "1663",
+      "score": 1.0,
+      "content": "图13-19 女，59岁，臀部颗粒细胞瘤术后 于大腿扪及肿物，声像图显示肌肉层内低回声占位病变（M），内部回声均匀。病变两极边界不清，与肌纤维交织分布",
+      "metadata": {
+        "image_path": "02_实用浅表/图片01175.jpg",
+        "caption": "图13-19 女，59岁，臀部颗粒细胞瘤术后 于大腿扪及肿物，声像图显示肌肉层内低回声占位病变（M），内部回声均匀。病变两极边界不清，与肌纤维交织分布",
         "source": "02_实用浅表.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    },
+    {
+      "doc_id": "4709",
+      "score": 1.0,
+      "content": "图5-57 双侧隐睾假两性畸形 经膜壁耻骨联合上纵断扫查，在膀胱和女性尿道深方可显示阴道回声，未见子宫和卵巢回声",
+      "metadata": {
+        "image_path": "04_浅表器官/图片00520.jpg",
+        "caption": "图5-57 双侧隐睾假两性畸形 经膜壁耻骨联合上纵断扫查，在膀胱和女性尿道深方可显示阴道回声，未见子宫和卵巢回声",
+        "source": "04_浅表器官.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    },
+    {
+      "doc_id": "4712",
+      "score": 1.0,
+      "content": "图5-59 两性畸形 经腹壁膀胱盆腔正中⽮状断⾯和系列横断⾯扫查均未显⽰⼦宫和卵巢，也⽆阴道回声（B）。",
+      "metadata": {
+        "image_path": "04_浅表器官/图片00523.jpg",
+        "caption": "图5-59 两性畸形 经腹壁膀胱盆腔正中⽮状断⾯和系列横断⾯扫查均未显⽰⼦宫和卵巢，也⽆阴道回声（B）。",
+        "source": "04_浅表器官.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    },
+    {
+      "doc_id": "6247",
+      "score": 1.0,
+      "content": "图20-5-67 膀胱泡球蚴包虫，呈实变型 BL.膀胱；M.肿块",
+      "metadata": {
+        "image_path": "05_超声医学上/图片01509.jpg",
+        "caption": "图20-5-67 膀胱泡球蚴包虫，呈实变型 BL.膀胱；M.肿块",
+        "source": "05_超声医学上.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    },
+    {
+      "doc_id": "6425",
+      "score": 1.0,
+      "content": "图1-19 旁瓣伪像 A.旁瓣伪像示意图；B.膀胱内旁瓣伪像超声图像（箭头）。",
+      "metadata": {
+        "image_path": "06_医学影像/图片00019.jpg",
+        "caption": "图1-19 旁瓣伪像 A.旁瓣伪像示意图；B.膀胱内旁瓣伪像超声图像（箭头）。",
+        "source": "06_医学影像.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    },
+    {
+      "doc_id": "6742",
+      "score": 1.0,
+      "content": "图6-3 膀胱的解剖图",
+      "metadata": {
+        "image_path": "06_医学影像/图片00336.jpg",
+        "caption": "图6-3 膀胱的解剖图",
+        "source": "06_医学影像.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    },
+    {
+      "doc_id": "6749",
+      "score": 1.0,
+      "content": "图6-10 正常膀胱声像图 膀胱充盈时，膀胱壁呈光滑带状回声，厚度 $0.1\\sim0.3\\mathrm{cm}$ ，膀胱内尿液呈无回声，膀胱形态随尿液充盈情况而变化。",
+      "metadata": {
+        "image_path": "06_医学影像/图片00343.jpg",
+        "caption": "图6-10 正常膀胱声像图 膀胱充盈时，膀胱壁呈光滑带状回声，厚度 $0.1\\sim0.3\\mathrm{cm}$ ，膀胱内尿液呈无回声，膀胱形态随尿液充盈情况而变化。",
+        "source": "06_医学影像.md",
+        "match_type": "like_or",
+        "result_type": "unknown"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "caption_to_image"
+    },
+    {
+      "doc_id": "6753",
+      "score": 1.0,
+      "content": "图6-14 异位肾超声图像 A.右侧肾窝未见肾脏回声；B.盆腔见异位肾；C.异位肾内血流分布正常；D.左肾位于左侧肾窝。UB：膀胱。",
+      "metadata": {
+        "image_path": "06_医学影像/图片00347.jpg",
+        "caption": "图6-14 异位肾超声图像 A.右侧肾窝未见肾脏回声；B.盆腔见异位肾；C.异位肾内血流分布正常；D.左肾位于左侧肾窝。UB：膀胱。",
+        "source": "06_医学影像.md",
         "match_type": "like_or",
         "result_type": "unknown"
       },
@@ -79,5 +372,5 @@
       "retrieval_type": "caption_to_image"
     }
   ],
-  "matched_image_count": 1
+  "matched_image_count": 10
 }

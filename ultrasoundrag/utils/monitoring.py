@@ -448,7 +448,7 @@ class StructuredLogger:
                 structlog.processors.StackInfoRenderer(),
                 structlog.processors.format_exc_info,
                 structlog.processors.UnicodeDecoder(),
-                structlog.processors.JSONRenderer(indent=2)
+                structlog.processors.JSONRenderer(indent=2, ensure_ascii=False)
             ],
             context_class=dict,
             logger_factory=structlog.stdlib.LoggerFactory(),

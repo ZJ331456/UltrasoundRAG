@@ -61,8 +61,8 @@ class FusionConfig:
     enable_exact_title_match: bool = True  # 是否启用精确标题匹配
     
     # 结果融合权重（基础值，会被动态调整）
-    text_weight: float = 0.6
-    image_weight: float = 0.4
+    text_weight: float = 0.7
+    image_weight: float = 0.3
     
     # 去重配置
     content_similarity_threshold: float = 0.8  # 内容相似度阈值
@@ -375,7 +375,7 @@ class ResultFusionManager:
         else:
             # 简单拼接作为兜底
             fused_results = self._simple_concat_fusion(text_results, image_results)
-            dynamic_weights = {"text_weight": 0.5, "image_weight": 0.5}
+            dynamic_weights = {"text_weight": 0.7, "image_weight": 0.3}
         
         # 应用多模态重排序
         if (self.config.enable_multimodal_rerank and hasattr(self, 'reranker') 
@@ -480,28 +480,9 @@ class ResultFusionManager:
         
         return all_results  # 不在这里限制top_k，由调用方处理
     
-    def _interleaved_fusion(self, text_results: List[RetrievalResult], 
-                           image_results: List[RetrievalResult]) -> List[RetrievalResult]:
-        """交替融合策略"""
-        fused_results = []
-        max_len = max(len(text_results), len(image_results))
-        
-        for i in range(max_len):
-            if i < len(text_results):
-                text_results[i].metadata['fusion_strategy'] = 'interleaved_text'
-                fused_results.append(text_results[i])
-            
-            if i < len(image_results):
-                image_results[i].metadata['fusion_strategy'] = 'interleaved_image'
-                fused_results.append(image_results[i])
-            
-            if len(fused_results) >= self.config.top_k:
-                break
-        
-        return fused_results[:self.config.top_k]
-    
     def _score_based_fusion(self, text_results: List[RetrievalResult], 
-                           image_results: List[RetrievalResult]) -> List[RetrievalResult]:
+                           image_results: List[RetrievalResult], 
+                           dynamic_weights: Optional[Dict[str, float]] = None) -> List[RetrievalResult]:
         """基于分数的融合策略"""
         all_results = []
         
@@ -609,8 +590,8 @@ class ResultFusionManager:
         """增强的交错融合策略"""
         if dynamic_weights:
             # 如果提供了动态权重，先应用权重
-            weighted_text = self._apply_weights_to_results(text_results, dynamic_weights.get('text_weight', 0.6))
-            weighted_image = self._apply_weights_to_results(image_results, dynamic_weights.get('image_weight', 0.4))
+            weighted_text = self._apply_weights_to_results(text_results, dynamic_weights.get('text_weight', 0.7))
+            weighted_image = self._apply_weights_to_results(image_results, dynamic_weights.get('image_weight', 0.3))
         else:
             weighted_text = text_results
             weighted_image = image_results

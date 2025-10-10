@@ -322,7 +322,7 @@ class T2TRetriever(BaseRetriever):
                 content=processed_content,  # 使用处理后的内容
                 metadata={
                     'title': result.get('title', ''),
-                    'md_file': result.get('md_file', ''),
+                    'file': result.get('file', ''),
                     'document_name': result.get('document_name', ''),
                     'chunk_index': result.get('chunk_index', 0),
                     'image_paths': image_paths,
@@ -373,7 +373,7 @@ class T2TRetriever(BaseRetriever):
                     content=processed_content,  # 使用处理后的内容
                     metadata={
                         'title': result.get('title', ''),
-                        'md_file': result.get('md_file', ''),
+                        'file': result.get('file', ''),
                         'document_name': result.get('document_name', ''),
                         'chunk_index': result.get('chunk_index', 0),
                         'image_paths': image_paths,
@@ -454,7 +454,7 @@ class T2TRetriever(BaseRetriever):
                     content=processed_content,  # 使用处理后的内容
                     metadata={
                         'title': result.get('title', ''),
-                        'md_file': result.get('md_file', ''),
+                        'file': result.get('file', ''),
                         'document_name': result.get('document_name', ''),
                         'chunk_index': result.get('chunk_index', 0),
                         'image_paths': image_paths,
@@ -469,9 +469,9 @@ class T2TRetriever(BaseRetriever):
                 )
                 text_results.append(retrieval_result)
             
-            # 如果启用了融合策略，还需要进行图片caption检索
+            # 如果启用了融合策略，还需要进行图片caption检索（仅当有图片集合时）
             fusion_config = self.t2t_config['fusion_config']
-            if fusion_config['image_caption_ratio'] > 0:
+            if fusion_config['image_caption_ratio'] > 0 and self.context.image_collection:
                 caption_results = self._search_by_image_captions(query, top_k)
                 
                 # 应用权重并合并结果
@@ -523,6 +523,11 @@ class T2TRetriever(BaseRetriever):
     def _search_by_image_captions(self, query: str, top_k: int) -> List[RetrievalResult]:
         """通过图片caption检索文本结果"""
         try:
+            # 检查是否有图片集合配置
+            if not self.context.image_collection:
+                self.logger.warning("图片集合未配置，跳过caption检索")
+                return []
+                
             # 这里需要使用图片检索器来搜索相关图片，然后返回其caption作为文本结果
             from ultrasoundrag.core.retrieval.modular_retrievers import T2IRetriever
             
@@ -673,6 +678,7 @@ class T2IRetriever(BaseRetriever):
             self.logger.debug(f"T2I相似度过滤: {len(milvus_results)} -> {len(results)}, 阈值: {similarity_threshold}")
             
             # 步骤6（可选）：Caption 语义增强
+            # ！！！这里的一个caption增强会去使用search_captions_by_query倒是返回空列表！
             # 目的：当查询更像标题/术语时，利用图片自带 caption 与查询做二次打分融合，
             #       可在低分场景提升排序质量与相关性稳定性。
             # Caption增强处理
@@ -772,12 +778,17 @@ class T2IRetriever(BaseRetriever):
             # 使用Caption增强匹配
             scored_captions = self.caption_enhancer.search_captions_by_query(query, caption_candidates)
             
+            # 如果Caption增强没有返回结果，直接返回原始结果
+            if not scored_captions:
+                self.logger.warning(f"Caption增强未找到匹配结果，返回原始结果: {len(results)}个")
+                return results
+            
             # 更新结果分数
             enhanced_results = []
             for caption_data, caption_score in scored_captions:
                 result = caption_data['result']
-                # 结合原始分数和caption匹配分数
-                result.score = result.score * 0.7 + caption_score * 0.3
+                # 结合原始分数和caption匹配分数 - 确保是Python原生float类型
+                result.score = float(result.score * 0.7 + caption_score * 0.3)
                 result.metadata['caption_match_score'] = caption_score
                 result.metadata['caption_enhanced'] = True
                 enhanced_results.append(result)
@@ -785,7 +796,7 @@ class T2IRetriever(BaseRetriever):
             # 按新分数排序
             enhanced_results.sort(key=lambda x: x.score, reverse=True)
             return enhanced_results
-            
+                
         except Exception as e:
             self.logger.error(f"Caption增强处理失败: {e}")
             return results
@@ -859,7 +870,10 @@ class I2TRetriever(BaseRetriever):
                 filter_expr = f'{self.text_manager.domain_field_name} == "{self.context.domain}"'
                 if self.context.use_partition:
                     partitions = [self.context.domain.replace(' ', '_')[:64]]
+            
+            self.logger.info(f"I2T开始搜索文本集合: {self.context.text_collection}, 向量维度: {len(query_vector)}")
             milvus_results = self.text_manager.search(query_vector, top_k * 2, filter_expr=filter_expr, partition_names=partitions)
+            self.logger.info(f"I2T Milvus搜索返回: {len(milvus_results)}个原始结果")
 
             # 应用相似度阈值过滤
             similarity_threshold = self.i2t_config.get('similarity_threshold', 0.15)
@@ -870,7 +884,7 @@ class I2TRetriever(BaseRetriever):
                 if len(filtered_milvus_results) >= top_k:
                     break
             
-            self.logger.debug(f"I2T相似度过滤: {len(milvus_results)} -> {len(filtered_milvus_results)}, 阈值: {similarity_threshold}")
+            self.logger.info(f"I2T相似度过滤: {len(milvus_results)} -> {len(filtered_milvus_results)}, 阈值: {similarity_threshold}")
 
             # 转换文本结果
             results = []
@@ -889,7 +903,7 @@ class I2TRetriever(BaseRetriever):
                     content=processed_content,  # 使用处理后的内容
                     metadata={
                         'title': result.get('title', ''),
-                        'md_file': result.get('md_file', ''),
+                        'file': result.get('file', ''),
                         'document_name': result.get('document_name', ''),
                         'chunk_index': result.get('chunk_index', 0),
                         'image_links': result.get('image_links', []),
@@ -925,6 +939,7 @@ class I2TRetriever(BaseRetriever):
             except Exception as e:
                 self.logger.warning(f"从文本结果匹配图片失败: {e}")
 
+            self.logger.info(f"I2T检索完成: 返回{len(results)}个结果")
             return {
                 'query_image': image_path,
                 'retrieval_type': 'i2t',
@@ -1001,7 +1016,9 @@ class I2IRetriever(BaseRetriever):
                 return self._empty_result(image_path, "图片向量生成失败")
             
             # 执行检索
+            self.logger.info(f"I2I开始搜索图片集合: {self.context.image_collection}, 向量维度: {len(query_vector)}")
             milvus_results = self.image_manager.search(query_vector, top_k * 2)
+            self.logger.info(f"I2I Milvus搜索返回: {len(milvus_results)}个原始结果")
             
             # 应用相似度阈值过滤
             similarity_threshold = self.i2i_config.get('similarity_threshold', 0.2)
@@ -1012,7 +1029,7 @@ class I2IRetriever(BaseRetriever):
                 if len(filtered_milvus_results) >= top_k:
                     break
             
-            self.logger.debug(f"I2I相似度过滤: {len(milvus_results)} -> {len(filtered_milvus_results)}, 阈值: {similarity_threshold}")
+            self.logger.info(f"I2I相似度过滤: {len(milvus_results)} -> {len(filtered_milvus_results)}, 阈值: {similarity_threshold}")
             
             # 转换结果
             results = []
@@ -1064,6 +1081,7 @@ class I2IRetriever(BaseRetriever):
                 )
                 results.append(retrieval_result)
             
+            self.logger.info(f"I2I检索完成: 返回{len(results)}个结果")
             return {
                 'query_image': image_path,
                 'retrieval_type': 'i2i',
@@ -1154,6 +1172,13 @@ class EnhancedMultimodalRetriever:
         self.i2t_retriever = I2TRetriever(context) if context.text_collection else None
         self.i2i_retriever = I2IRetriever(context) if context.image_collection else None
         
+        # 调试日志：检查检索器初始化状态
+        self.logger.info(f"检索器初始化状态:")
+        self.logger.info(f"  T2T检索器: {'已初始化' if self.t2t_retriever else '未初始化'} (文本集合: {context.text_collection})")
+        self.logger.info(f"  T2I检索器: {'已初始化' if self.t2i_retriever else '未初始化'} (图片集合: {context.image_collection})")
+        self.logger.info(f"  I2T检索器: {'已初始化' if self.i2t_retriever else '未初始化'} (文本集合: {context.text_collection})")
+        self.logger.info(f"  I2I检索器: {'已初始化' if self.i2i_retriever else '未初始化'} (图片集合: {context.image_collection})")
+        
         # 初始化融合管理器 - 使用全局管理器
         if context.enable_fusion_optimization:
             self.fusion_manager = global_component_manager.get_component(
@@ -1185,12 +1210,21 @@ class EnhancedMultimodalRetriever:
         start_time = time.time()
         top_k = top_k or self.context.top_k
         
+        # 调试日志：检查原始输入参数
+        self.logger.info(f"原始输入参数:")
+        self.logger.info(f"  query: {query} (类型: {type(query)})")
+        self.logger.info(f"  text_query: {text_query} (类型: {type(text_query)})")
+        self.logger.info(f"  image_path: {image_path} (类型: {type(image_path)})")
+        self.logger.info(f"  mode: {mode}")
+        
         # 解析输入参数
         parsed_input = self._parse_input(query, text_query, image_path)
+        self.logger.info(f"输入解析结果: {parsed_input}")
         
         # 自动模式选择
         if mode == "auto":
             mode = self._auto_select_mode(parsed_input)
+            self.logger.info(f"Auto模式选择结果: {mode}")
         
         try:
             if mode == "t2t" and self.t2t_retriever:
@@ -1262,8 +1296,11 @@ class EnhancedMultimodalRetriever:
         if image_path:
             parsed['image_path'] = image_path
         
+        self.logger.debug(f"输入解析 - 明确参数: text_query={text_query}, image_path={image_path}")
+        
         # 如果是字典格式的查询
         if isinstance(query, dict):
+            self.logger.debug(f"输入解析 - 字典格式查询: {query}")
             if not parsed['text_query'] and 'query' in query:
                 parsed['text_query'] = query['query']
             if not parsed['text_query'] and 'text_query' in query:
@@ -1273,24 +1310,29 @@ class EnhancedMultimodalRetriever:
         
         # 如果是字符串查询
         elif isinstance(query, str):
+            self.logger.debug(f"输入解析 - 字符串格式查询: '{query}'")
             # 判断是否为图片路径
             if query.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.gif')):
                 if not parsed['image_path']:
                     parsed['image_path'] = query
+                    self.logger.debug("输入解析 - 识别为图片路径")
             else:
                 if not parsed['text_query']:
                     parsed['text_query'] = query
+                    self.logger.debug("输入解析 - 识别为文本查询")
         
+        self.logger.debug(f"输入解析结果: {parsed}")
         return parsed
     
     def _auto_select_mode(self, parsed_input: Dict[str, Optional[str]]) -> str:
         """
-        根据输入自动选择最佳的单一检索模式
+        增强的自动模式选择算法
         
-        Auto模式的策略：
-        - 只有文本输入：根据文本特征智能选择 t2t 或 t2i
-        - 只有图片输入：根据应用场景选择 i2t 或 i2i
-        - 图文混合输入：选择 multimodal 进行融合检索
+        基于多维度分析智能选择最佳检索模式：
+        1. 输入类型分析（文本/图片/混合）
+        2. 文本语义特征分析
+        3. 上下文意图推断
+        4. 用户历史偏好（未来扩展）
         
         Args:
             parsed_input: 解析后的输入，包含text_query和image_path
@@ -1301,26 +1343,77 @@ class EnhancedMultimodalRetriever:
         text_query = parsed_input['text_query']
         image_path = parsed_input['image_path']
         
-        # 图文混合输入 -> 使用multimodal融合
+        self.logger.debug(f"Auto模式输入分析: text={bool(text_query)}, image={bool(image_path)}")
+        
+        # 情况1: 图文混合输入 -> 智能融合策略
         if text_query and image_path:
+            self.logger.info(f"检测到图文混合输入，选择multimodal模式: 文本='{text_query}', 图片='{image_path}'")
             return "multimodal"
         
-        # 只有文本输入 -> 智能选择t2t或t2i
+        # 情况2: 只有文本输入 -> 多维度文本分析
         elif text_query and not image_path:
-            return self._analyze_text_for_mode_selection(text_query)
+            # 验证图片路径有效性
+            if self._is_valid_image_path(text_query):
+                self.logger.info("文本输入实际为图片路径，转换为i2t模式")
+                parsed_input['image_path'] = text_query
+                parsed_input['text_query'] = None
+                return "i2t"
+            
+            # 高级文本语义分析
+            mode = self._advanced_text_analysis_for_mode_selection(text_query)
+            self.logger.info(f"文本语义分析结果：选择{mode}模式")
+            return mode
         
-        # 只有图片输入 -> 默认选择i2t（图片理解文档）
+        # 情况3: 只有图片输入 -> 智能图片处理策略
         elif image_path and not text_query:
-            return "i2t"  # 图片输入通常是想理解图片内容，所以选择i2t
+            # 验证图片文件
+            if not self._is_valid_image_path(image_path):
+                raise ValueError(f"无效的图片路径: {image_path}")
+            
+            # 基于图片特征选择模式
+            mode = self._analyze_image_for_mode_selection(image_path)
+            self.logger.info(f"图片分析结果：选择{mode}模式")
+            return mode
         
-        # 都没有输入
+        # 情况4: 无有效输入
         else:
-            raise ValueError("需要至少提供文本查询或图片路径")
+            raise ValueError("Auto模式需要至少提供文本查询或图片路径")
     
-    # 这里会只能选择输入的问题是想去选择找图片还是对应的文本的一个简单分析逻辑
-    def _analyze_text_for_mode_selection(self, text_query: str) -> str:
+    def _is_valid_image_path(self, path: str) -> bool:
         """
-        分析文本查询特征，智能选择t2t或t2i模式
+        验证是否为有效的图片路径
+        
+        Args:
+            path: 待验证的路径
+            
+        Returns:
+            bool: 是否为有效图片路径
+        """
+        if not path or not isinstance(path, str):
+            return False
+        
+        # 检查文件扩展名
+        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.gif', '.webp'}
+        path_lower = path.lower()
+        
+        if any(path_lower.endswith(ext) for ext in image_extensions):
+            # 如果是绝对路径，检查文件是否存在
+            if os.path.isabs(path):
+                return os.path.isfile(path) and os.access(path, os.R_OK)
+            # 相对路径暂时认为有效（避免过度验证）
+            return True
+        
+        return False
+    
+    def _advanced_text_analysis_for_mode_selection(self, text_query: str) -> str:
+        """
+        高级文本语义分析，智能选择t2t或t2i模式
+        
+        基于多个维度进行分析：
+        1. 关键词语义分析
+        2. 语言结构分析  
+        3. 医学领域特征分析
+        4. 意图类型推断
         
         Args:
             text_query: 文本查询
@@ -1328,35 +1421,136 @@ class EnhancedMultimodalRetriever:
         Returns:
             选择的模式 ("t2t" 或 "t2i")
         """
-        query_lower = text_query.lower().strip()
-        
-        # 图片相关关键词 -> t2i
+        try:
+            query_lower = text_query.lower().strip()
+            
+            # 计算各种特征分数
+            image_intent_score = self._calculate_image_intent_score(query_lower)
+            text_intent_score = self._calculate_text_intent_score(query_lower)
+            medical_context_score = self._calculate_medical_context_score(query_lower)
+            
+            # 综合评分决策
+            # 图片意图强烈 + 医学上下文 -> t2i
+            if image_intent_score > 2 and medical_context_score > 1:
+                return "t2i"
+            
+            # 明确的文档查询意图 -> t2t
+            if text_intent_score > 2:
+                return "t2t"
+            
+            # 模糊情况，基于医学上下文和查询复杂度决定
+            if medical_context_score > 2 and len(query_lower) > 10:
+                # 复杂医学查询优先选择文档检索
+                return "t2t"
+            elif image_intent_score > text_intent_score:
+                return "t2i"
+            else:
+                return "t2t"  # 默认文档检索
+                
+        except Exception as e:
+            self.logger.warning(f"文本分析失败，使用默认模式: {e}")
+            return "t2t"  # 出错时默认返回t2t
+    
+    def _calculate_image_intent_score(self, query: str) -> float:
+        """计算图片意图得分"""
         image_keywords = [
-            '图', '图片', '图像', '照片', '显示', '看到', '截面', '切面', 
-            '影像', '表现', '征象', '形态', '外观', '样子', '长什么样',
-            'image', 'picture', 'show', 'appearance', 'look like'
+            ('图像', 2.0), ('图片', 2.0), ('图', 1.5), ('影像', 2.0),
+            ('显示', 1.5), ('看到', 1.0), ('截面', 2.0), ('切面', 2.0),
+            ('外观', 1.5), ('形态', 2.0), ('表现', 1.5), ('征象', 2.0),
+            ('长什么样', 2.0), ('什么样子', 1.5), ('样子', 1.0),
+            ('image', 2.0), ('picture', 2.0), ('show', 1.5), 
+            ('appearance', 2.0), ('look like', 2.0), ('fig', 1.5),
+            ('figure', 1.5), ('scan', 2.0), ('view', 1.5)
         ]
         
-        # 文档相关关键词 -> t2t  
+        score = 0.0
+        for keyword, weight in image_keywords:
+            if keyword in query:
+                score += weight
+        
+        return score
+    
+    def _calculate_text_intent_score(self, query: str) -> float:
+        """计算文档意图得分"""
         text_keywords = [
-            '方法', '步骤', '流程', '原理', '机制', '原因', '如何', '怎么',
-            '诊断', '治疗', '检查', '操作', '技术', '指南', '标准',
-            'method', 'procedure', 'how to', 'diagnosis', 'treatment'
+            ('方法', 2.0), ('步骤', 2.0), ('流程', 2.0), ('过程', 1.5),
+            ('原理', 2.0), ('机制', 2.0), ('原因', 1.5), ('如何', 2.0), 
+            ('怎么', 2.0), ('为什么', 1.5), ('指南', 2.0), ('标准', 2.0),
+            ('操作', 1.5), ('技术', 1.5), ('protocol', 2.0), ('procedure', 2.0),
+            ('method', 2.0), ('how to', 2.0), ('why', 1.5), ('guideline', 2.0),
+            ('standard', 2.0), ('technique', 1.5), ('algorithm', 2.0)
         ]
         
-        # 计算关键词匹配分数
-        image_score = sum(1 for keyword in image_keywords if keyword in query_lower)
-        text_score = sum(1 for keyword in text_keywords if keyword in query_lower)
+        score = 0.0
+        for keyword, weight in text_keywords:
+            if keyword in query:
+                score += weight
         
-        # 如果包含明确的图片关键词，选择t2i
-        if image_score > text_score:
-            return "t2i"
-        # 如果包含明确的文档关键词，选择t2t
-        elif text_score > image_score:
-            return "t2t"
-        # 默认情况下选择t2t（文档检索通常更通用）
-        else:
-            return "t2t"
+        return score
+    
+    def _calculate_medical_context_score(self, query: str) -> float:
+        """计算医学上下文得分"""
+        medical_keywords = [
+            ('诊断', 2.0), ('检查', 2.0), ('治疗', 2.0), ('病变', 2.0),
+            ('疾病', 1.5), ('症状', 1.5), ('异常', 1.5), ('正常', 1.0),
+            ('超声', 2.0), ('心脏', 1.5), ('肝脏', 1.5), ('肾脏', 1.5),
+            ('胎儿', 2.0), ('妊娠', 1.5), ('产科', 1.5), ('妇科', 1.5),
+            ('diagnosis', 2.0), ('examination', 2.0), ('treatment', 2.0),
+            ('ultrasound', 2.0), ('cardiac', 1.5), ('fetal', 2.0),
+            ('pregnancy', 1.5), ('liver', 1.5), ('kidney', 1.5)
+        ]
+        
+        score = 0.0
+        for keyword, weight in medical_keywords:
+            if keyword in query:
+                score += weight
+        
+        return score
+    
+    def _analyze_image_for_mode_selection(self, image_path: str) -> str:
+        """
+        基于图片特征选择检索模式
+        
+        策略：
+        1. 通常图片查询是为了理解图片内容 -> i2t
+        2. 特殊情况（查找相似图片）-> i2i
+        
+        Args:
+            image_path: 图片路径
+            
+        Returns:
+            选择的模式 ("i2t" 或 "i2i")
+        """
+        try:
+            # 基于文件名模式判断
+            filename = os.path.basename(image_path).lower()
+            
+            # 如果文件名包含特定模式，可能想查找相似图片
+            similarity_patterns = ['example', 'sample', 'similar', 'like', 'reference']
+            if any(pattern in filename for pattern in similarity_patterns):
+                self.logger.debug("检测到相似性查询模式，选择i2i")
+                return "i2i"
+            
+            # 默认选择i2t（图片理解）
+            self.logger.debug("默认图片理解模式，选择i2t")
+            return "i2t"
+            
+        except Exception as e:
+            self.logger.warning(f"图片分析失败，使用默认模式: {e}")
+            return "i2t"  # 出错时默认返回i2t
+    
+    def _analyze_text_for_mode_selection(self, text_query: str) -> str:
+        """
+        分析文本查询特征，智能选择t2t或t2i模式（向后兼容方法）
+        
+        Args:
+            text_query: 文本查询
+            
+        Returns:
+            选择的模式 ("t2t" 或 "t2i")
+        """
+        # 直接调用新的高级分析方法
+        return self._advanced_text_analysis_for_mode_selection(text_query)
     
     def _multimodal_search(self, parsed_input: Dict[str, Optional[str]], top_k: int, **kwargs) -> Dict[str, Any]:
         """
@@ -1386,8 +1580,11 @@ class EnhancedMultimodalRetriever:
         }
         
         try:
+            self.logger.info(f"多模态检索开始: text_query='{text_query}', image_path='{image_path}'")
+            
             # 情况1：只有文本输入 -> 执行 t2t + t2i
             if text_query and not image_path:
+                self.logger.info("执行纯文本多模态检索: T2T + T2I")
                 if self.t2t_retriever:
                     t2t_result = self.t2t_retriever.search(text_query, top_k, **kwargs)
                     t2t_results = t2t_result.get('results', [])
@@ -1400,6 +1597,7 @@ class EnhancedMultimodalRetriever:
             
             # 情况2：只有图片输入 -> 执行 i2t + i2i
             elif image_path and not text_query:
+                self.logger.info("执行纯图片多模态检索: I2T + I2I")
                 if self.i2t_retriever:
                     i2t_result = self.i2t_retriever.search(image_path, top_k, **kwargs)
                     i2t_results = i2t_result.get('results', [])
@@ -1410,60 +1608,76 @@ class EnhancedMultimodalRetriever:
                     i2i_results = i2i_result.get('results', [])
                     retrieval_breakdown['i2i_executed'] = True
             
-            # 情况3：图文混合输入 -> 执行 i2t + t2t + t2i
+            # 情况3：图文混合输入 -> 执行 i2t + t2t + t2i + i2i
             elif text_query and image_path:
+                self.logger.info(f"执行图文混合检索: 文本='{text_query}', 图片='{image_path}'")
+                
                 # 基于图片理解内容
                 if self.i2t_retriever:
+                    self.logger.info("执行I2T检索（图片理解）")
                     i2t_result = self.i2t_retriever.search(image_path, top_k, **kwargs)
                     i2t_results = i2t_result.get('results', [])
                     retrieval_breakdown['i2t_executed'] = True
+                    self.logger.info(f"I2T检索完成: 找到{len(i2t_results)}个结果")
                 
                 # 基于文本查询找文档
                 if self.t2t_retriever:
+                    self.logger.info("执行T2T检索（文本理解）")
                     t2t_result = self.t2t_retriever.search(text_query, top_k, **kwargs)
                     t2t_results = t2t_result.get('results', [])
                     retrieval_breakdown['t2t_executed'] = True
+                    self.logger.info(f"T2T检索完成: 找到{len(t2t_results)}个结果")
                 
                 # 基于文本查询找相关图片
                 if self.t2i_retriever:
+                    self.logger.info("执行T2I检索（相关图片）")
                     t2i_result = self.t2i_retriever.search(text_query, top_k, **kwargs)
                     t2i_results = t2i_result.get('results', [])
                     retrieval_breakdown['t2i_executed'] = True
+                    self.logger.info(f"T2I检索完成: 找到{len(t2i_results)}个结果")
+                
+                # 基于图片找相似图片
+                if self.i2i_retriever:
+                    self.logger.info("执行I2I检索（相似图片）")
+                    i2i_result = self.i2i_retriever.search(image_path, top_k, **kwargs)
+                    i2i_results = i2i_result.get('results', [])
+                    retrieval_breakdown['i2i_executed'] = True
+                    self.logger.info(f"I2I检索完成: 找到{len(i2i_results)}个结果")
             
             # 合并所有结果并应用权重
             all_results = []
             
             # 为不同类型的结果分配权重
             if text_query and image_path:
-                # 图文混合：图片理解40%，文本理解35%，相关图片25%
-                weights = {'i2t': 0.4, 't2t': 0.35, 't2i': 0.25}
+                # 图文混合：文本理解50%，图片理解20%，相关图片15%，相似图片15%
+                weights = {'i2t': 0.2, 't2t': 0.5, 't2i': 0.15, 'i2i': 0.15}
             elif text_query and not image_path:
-                # 只有文本：文本检索60%，图片检索40%
-                weights = {'t2t': 0.6, 't2i': 0.4}
+                # 只有文本：文本检索75%，图片检索25%
+                weights = {'t2t': 0.75, 't2i': 0.25}
             elif image_path and not text_query:
-                # 只有图片：图片到文本70%，图片到图片30%
-                weights = {'i2t': 0.7, 'i2i': 0.3}
+                # 只有图片：图片到文本60%，图片到图片40%
+                weights = {'i2t': 0.6, 'i2i': 0.4}
             else:
                 weights = {}
             
             # 应用权重并合并结果
             for result in i2t_results:
-                result.score = result.score * weights.get('i2t', 1.0)
+                result.score = float(result.score * weights.get('i2t', 1.0))
                 result.metadata['multimodal_component'] = 'image_understanding'
                 all_results.append(result)
             
             for result in t2t_results:
-                result.score = result.score * weights.get('t2t', 1.0)
+                result.score = float(result.score * weights.get('t2t', 1.0))
                 result.metadata['multimodal_component'] = 'text_understanding'
                 all_results.append(result)
             
             for result in t2i_results:
-                result.score = result.score * weights.get('t2i', 1.0)
+                result.score = float(result.score * weights.get('t2i', 1.0))
                 result.metadata['multimodal_component'] = 'related_images'
                 all_results.append(result)
             
             for result in i2i_results:
-                result.score = result.score * weights.get('i2i', 1.0)
+                result.score = float(result.score * weights.get('i2i', 1.0))
                 result.metadata['multimodal_component'] = 'similar_images'
                 all_results.append(result)
             

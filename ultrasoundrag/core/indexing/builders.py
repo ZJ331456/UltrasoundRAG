@@ -10,7 +10,7 @@ from ...config import config
 from ...utils import setup_logger
 from ...data.processors.database_operations import DatabaseOperations
 from ...data.processors.dataset_builder import DatasetBuilder
-from ..document_updater import DocumentUpdateManager, UpdateStats
+from ...data.processors.document_updater import DocumentUpdateManager, UpdateStats
 
 
 class IndexBuilder:
@@ -293,12 +293,25 @@ def delete_collection(collection_name: str, collection_type: str = None) -> bool
         
         logger.info(f"开始删除集合: {collection_name}")
         
-        # 连接到Milvus并删除集合（集合类型不影响删除操作）
-        manager = MilvusManager(collection_type=collection_type or "md", collection_name=collection_name)
-        manager.drop_collection()
+        # 推断集合类型（如果未提供）
+        if not collection_type:
+            if 'image' in collection_name.lower():
+                collection_type = 'image'
+            elif 'pdf' in collection_name.lower():
+                collection_type = 'pdf'
+            else:
+                collection_type = 'md'
         
-        logger.info(f"成功删除集合: {collection_name}")
-        return True
+        # 连接到Milvus并删除集合
+        manager = MilvusManager(collection_type=collection_type, collection_name=collection_name)
+        success = manager.drop_collection()
+        
+        if success:
+            logger.info(f"成功删除集合: {collection_name}")
+        else:
+            logger.error(f"删除集合失败: {collection_name}")
+        
+        return success
             
     except Exception as e:
         logger.error(f"删除集合时发生错误: {e}")
@@ -332,6 +345,22 @@ def delete_database(db_name: str) -> bool:
         collections = client.list_collections()
         logger.info(f"数据库 '{db_name}' 中的集合: {collections}")
         
+        # 二次确认机制
+        print(f"\n⚠️  警告：您即将删除数据库 '{db_name}'")
+        print(f"   该数据库包含以下集合: {collections}")
+        print(f"   此操作将永久删除所有数据，无法恢复！")
+        print(f"\n   请输入 'DELETE {db_name}' 来确认删除操作：")
+        
+        confirmation = input("确认输入: ").strip()
+        
+        if confirmation != f"DELETE {db_name}":
+            logger.info(f"用户取消了数据库删除操作")
+            print("删除操作已取消")
+            return False
+        
+        print("确认通过，开始删除数据库...")
+        logger.warning(f"用户确认删除数据库: {db_name}")
+        
         # 删除所有集合
         for collection_name in collections:
             logger.info(f"删除集合: {collection_name}")
@@ -341,10 +370,12 @@ def delete_database(db_name: str) -> bool:
         client.drop_database(db_name)
         
         logger.warning(f"成功删除数据库: {db_name}")
+        print(f"✅ 数据库 '{db_name}' 已成功删除")
         return True
             
     except Exception as e:
         logger.error(f"删除数据库时发生错误: {e}")
+        print(f"❌ 删除数据库时发生错误: {e}")
         return False
 
 
@@ -369,7 +400,7 @@ def create_collection(collection_name: str, collection_type: str = "md", db_name
         return False
 
 
-def add_data_to_collection(data_path: str, collection_name: str, collection_type: str = "md", db_name: str = None) -> bool:
+def add_data_to_collection(data_path: str, collection_name: str, collection_type: str = "md", db_name: str = None, original_filename: str = None) -> bool:
     """将数据添加到指定集合的便捷函数 - 重构版本"""
     from ...utils import setup_logger
     from ...data.processors.database_operations import DatabaseOperations
@@ -391,13 +422,13 @@ def add_data_to_collection(data_path: str, collection_name: str, collection_type
         # 根据集合类型选择解析器
         if collection_type == "md":
             parser = MarkdownParser()
-            parsed_data = parser.parse_single_file(data_path)
+            parsed_data = parser.parse_single_file(data_path, original_filename=original_filename)
         elif collection_type == "pdf":
             parser = PDFParser()
-            parsed_data = parser.parse_single_file(data_path)
+            parsed_data = parser.parse_single_file(data_path, original_filename=original_filename)
         elif collection_type == "image":
             parser = ImageParser()
-            parsed_data = parser.parse_single_file(data_path)
+            parsed_data = parser.parse_single_file(data_path, original_filename=original_filename)
         else:
             logger.error(f"不支持的集合类型: {collection_type}")
             return False
@@ -489,9 +520,23 @@ def get_collection_info(collection_name: str, db_name: str = None) -> Dict:
     try:
         from ...data.stores.milvus_store import MilvusManager
         
+        # 根据集合名称推断类型
+        def _infer_collection_type_local(name: str) -> str:
+            """根据集合名称推断类型"""
+            name_lower = name.lower()
+            if 'image' in name_lower or 'img' in name_lower:
+                return 'image'
+            elif 'pdf' in name_lower:
+                return 'pdf'
+            else:
+                return 'md'
+        
+        collection_type = _infer_collection_type_local(collection_name)
+        
         # 创建管理器
-        manager = MilvusManager(collection_type="md", collection_name=collection_name, db_name=db_name)
-        info = manager.get_collection_info()
+        manager = MilvusManager(collection_type=collection_type, collection_name=collection_name, db_name=db_name)
+        # 使用修复后的快速方法
+        info = manager.get_collection_info_fast()
         
         return info
             

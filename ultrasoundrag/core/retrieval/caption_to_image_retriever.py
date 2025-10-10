@@ -1176,7 +1176,7 @@ class CaptionToImageRetriever:
         rows = self.image_manager.search_with_filter(
             filter_expr=filter_expr,
             limit=max(1, top_k_per_caption * len(candidates)),
-            output_fields=["id", "image_path", "caption", "source"],
+            output_fields=["id", "image_path", "caption", "source", "file"],
         )
 
         # 4) 去重并封装为 RetrievalResult（按 image_path 去重）

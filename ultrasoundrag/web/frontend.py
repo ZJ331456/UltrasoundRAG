@@ -223,7 +223,7 @@ class ValidationError(Exception):
     pass
 
 # 缓存多数据库管理器
-@st.cache_resource
+@st.cache_resource(ttl=3600)  # 1小时缓存
 def get_multi_db_manager() -> Optional[Any]:
     """获取多数据库管理器实例"""
     try:
@@ -242,7 +242,7 @@ def get_multi_db_manager() -> Optional[Any]:
         return None
 
 # 缓存检索器实例
-@st.cache_resource
+@st.cache_resource(ttl=3600)  # 1小时缓存
 def get_retrievers(db_key: str) -> Optional[Dict[str, Any]]:
     """按数据库键获取所有检索器实例（优化版：使用共享模型）"""
     try:

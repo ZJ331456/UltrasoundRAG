@@ -165,8 +165,8 @@ class RuleBasedReranker(BaseReranker):
                 medical_score * self.config.medical_term_weight
             )
             
-            # 更新结果
-            result.score = final_score
+            # 更新结果 - 确保是Python原生float类型
+            result.score = float(final_score)
             result.metadata['rerank_components'] = {
                 'base': base_score,
                 'overlap': overlap_score,
@@ -489,9 +489,9 @@ class MultimodalRerankConfig:
     top_k: int = 20
     
     # 权重配置
-    semantic_weight: float = 0.6      # 语义相关性权重
-    visual_weight: float = 0.3        # 视觉相关性权重
-    textual_weight: float = 0.4       # 文本相关性权重
+    semantic_weight: float = 0.7      # 语义相关性权重
+    visual_weight: float = 0.2        # 视觉相关性权重
+    textual_weight: float = 0.5       # 文本相关性权重
     cross_modal_weight: float = 0.3   # 跨模态相关性权重
     
     # 质量控制
@@ -506,8 +506,8 @@ class MultimodalRerankConfig:
     # 融合旧的重排序配置
     enable_rule_based: bool = True
     enable_model_based: bool = True
-    rule_weight: float = 0.3
-    model_weight: float = 0.4
+    rule_weight: float = 0.4
+    model_weight: float = 0.5
 
 
 @dataclass
@@ -757,7 +757,8 @@ class MultimodalReranker:
             similarity = np.dot(query_vector, caption_vector) / (
                 np.linalg.norm(query_vector) * np.linalg.norm(caption_vector)
             )
-            return max(0.0, similarity)
+            # 确保返回Python原生float类型
+            return max(0.0, float(similarity))
         except:
             return 0.0
     

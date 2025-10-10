@@ -63,7 +63,7 @@ class MarkdownParser:
             # 为每个块添加必要信息
             for chunk in chunks:
                 chunk['id'] = chunk_id
-                chunk['md_file'] = os.path.relpath(md_file, self.base_md_path)
+                chunk['file'] = os.path.relpath(md_file, self.base_md_path)
                 chunk['document_name'] = os.path.basename(md_file).replace('.md', '')
                 
                 # 处理图片信息（统一命名：image_paths / image_captions）
@@ -80,7 +80,7 @@ class MarkdownParser:
         print(f"总共解析了 {len(all_chunks)} 个文档块")
         return all_chunks
     
-    def parse_single_file(self, file_path: str) -> List[Dict]:
+    def parse_single_file(self, file_path: str, original_filename: str = None) -> List[Dict]:
         """
         解析单个Markdown文件
         
@@ -101,7 +101,11 @@ class MarkdownParser:
         
         for chunk in chunks:
             chunk['id'] = chunk_id
-            chunk['md_file'] = os.path.relpath(file_path, self.base_md_path)
+            # 使用原始文件名，如果没有则使用文件路径
+            if original_filename:
+                chunk['file'] = original_filename
+            else:
+                chunk['file'] = os.path.relpath(file_path, self.base_md_path)
             chunk['document_name'] = os.path.basename(file_path).replace('.md', '')
             
             # 处理图片信息（统一命名：image_paths / image_captions）

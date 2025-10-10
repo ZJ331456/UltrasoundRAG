@@ -11,9 +11,9 @@ import hashlib
 import time
 import json
 
-from ..utils import setup_logger
-from ..data.stores.milvus_store import MilvusManager
-from ..utils.embedding_utils import embedding_provider
+from ...utils import setup_logger
+from ..stores.milvus_store import MilvusManager
+from ...utils.embedding_utils import embedding_provider
 
 
 @dataclass
@@ -55,11 +55,14 @@ class DocumentUpdateManager:
         self.dataset_config = dataset_config
         self.logger = setup_logger(f"DocumentUpdater_{dataset_name}")
         
-        # 初始化Milvus管理器
-        self.milvus_manager = MilvusManager()
+        # # 初始化Milvus管理器
+        # self.milvus_manager = MilvusManager()
         
         # 获取集合名称
         self.collection_name = dataset_config.get('collection_name', f"{dataset_name}_collection")
+        
+        # 初始化Milvus管理器，使用正确的集合名称
+        self.milvus_manager = MilvusManager(collection_name=self.collection_name)
         
         # 状态跟踪文件
         self.state_file = f".{dataset_name}_update_state.json"
@@ -236,7 +239,7 @@ class DocumentUpdateManager:
     
     def _process_markdown_file(self, full_path: str, relative_path: str):
         """处理Markdown文件"""
-        from ..data.loaders.markdown_parser import MarkdownParser
+        from ..loaders.markdown_parser import MarkdownParser
         
         # 创建Markdown解析器
         parser = MarkdownParser(self.dataset_name)
@@ -265,7 +268,7 @@ class DocumentUpdateManager:
                 data.append({
                     'content': chunk['content'],
                     'metadata': {
-                        'md_file': relative_path,
+                        'file': relative_path,
                         'chunk_id': chunk.get('chunk_id', ''),
                         'section': chunk.get('section', ''),
                         'page': chunk.get('page', 0)
@@ -273,7 +276,8 @@ class DocumentUpdateManager:
                 })
             
             # 插入到Milvus
-            result = self.milvus_manager.insert_documents(self.collection_name, data)
+            # result = self.milvus_manager.insert_documents(self.collection_name, data)
+            result = self.milvus_manager.insert_data(data)
             self.logger.info(f"插入 {len(data)} 个chunks到集合 {self.collection_name}")
             
         except Exception as e:
@@ -309,7 +313,7 @@ class DocumentUpdateManager:
 def update_document_by_name(dataset_name: str, base_path: str = None, extensions: List[str] = None) -> UpdateStats:
     """根据数据集名称更新文档的便捷函数"""
     try:
-        from ..config import config
+        from ...config import config
         
         # 获取数据集配置
         datasets = config.get('indexing', {}).get('markdown', {}).get('datasets', {})

@@ -5,10 +5,11 @@
     {
       "doc_id": "7020",
       "score": 1.0,
-      "content": "图1-8 血液中的极低回声，显示在高灵敏度仪器下血液内部的细微结构变化。",
+      "content": "<image src=\"/api/images/图片00008.jpg\" caption=\"图1-8 血液中的极低回声，显示在高灵敏度仪器下血液内部的细微结构变化。\"/>",
       "metadata": {
         "image_path": "07_腹部超声/图片00008.jpg",
         "caption": "图1-8 血液中的极低回声，显示在高灵敏度仪器下血液内部的细微结构变化。",
+        "image_hash": "图片00008",
         "source": "07_腹部超声.md",
         "file_size": 0,
         "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
@@ -26,10 +27,11 @@
     {
       "doc_id": "7029",
       "score": 0.42904630303382874,
-      "content": "图1-17 血流性质异常，CDFI显示湍流呈多彩镶嵌，提示狭窄或反流。",
+      "content": "<image src=\"/api/images/图片00017.jpg\" caption=\"图1-17 血流性质异常，CDFI显示湍流呈多彩镶嵌，提示狭窄或反流。\"/>",
       "metadata": {
         "image_path": "07_腹部超声/图片00017.jpg",
         "caption": "图1-17 血流性质异常，CDFI显示湍流呈多彩镶嵌，提示狭窄或反流。",
+        "image_hash": "图片00017",
         "source": "07_腹部超声.md",
         "file_size": 0,
         "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
@@ -47,11 +49,166 @@
     {
       "doc_id": "6969",
       "score": 0.42311424016952515,
-      "content": "图10-59 颈部Ⅲ区正常淋巴结 淋巴结呈长椭圆形，L/S>2，边界清晰，淋巴门狭窄型，皮质为均匀低回声。",
+      "content": "<image src=\"/api/images/图片00563.jpg\" caption=\"图10-59 颈部Ⅲ区正常淋巴结 淋巴结呈长椭圆形，L/S>2，边界清晰，淋巴门狭窄型，皮质为均匀低回声。\"/>",
       "metadata": {
         "image_path": "06_医学影像/图片00563.jpg",
         "caption": "图10-59 颈部Ⅲ区正常淋巴结 淋巴结呈长椭圆形，L/S>2，边界清晰，淋巴门狭窄型，皮质为均匀低回声。",
+        "image_hash": "图片00563",
         "source": "06_医学影像.md",
+        "file_size": 0,
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_image",
+        "image_width": null,
+        "image_height": null,
+        "image_format": null,
+        "created_time": null,
+        "result_type": "image",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "image_to_image"
+    },
+    {
+      "doc_id": "4351",
+      "score": 0.42213329672813416,
+      "content": "<image src=\"/api/images/图片00154.jpg\" caption=\"图1-154 虹膜角膜内皮综合征中轴图像\"/>",
+      "metadata": {
+        "image_path": "04_浅表器官/图片00154.jpg",
+        "caption": "图1-154 虹膜角膜内皮综合征中轴图像",
+        "image_hash": "图片00154",
+        "source": "04_浅表器官.md",
+        "file_size": 0,
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_image",
+        "image_width": null,
+        "image_height": null,
+        "image_format": null,
+        "created_time": null,
+        "result_type": "image",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "image_to_image"
+    },
+    {
+      "doc_id": "7019",
+      "score": 0.40002501010894775,
+      "content": "<image src=\"/api/images/图片00007.jpg\" caption=\"图1-7 实质性组织（小腿肌肉）回声规律\"/>",
+      "metadata": {
+        "image_path": "07_腹部超声/图片00007.jpg",
+        "caption": "图1-7 实质性组织（小腿肌肉）回声规律",
+        "image_hash": "图片00007",
+        "source": "07_腹部超声.md",
+        "file_size": 0,
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_image",
+        "image_width": null,
+        "image_height": null,
+        "image_format": null,
+        "created_time": null,
+        "result_type": "image",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "image_to_image"
+    },
+    {
+      "doc_id": "7025",
+      "score": 0.3939354419708252,
+      "content": "<image src=\"/api/images/图片00013.jpg\" caption=\"图1-13 胆囊结石声像图，显示强回声伴后方声影，提示含钙结石。\"/>",
+      "metadata": {
+        "image_path": "07_腹部超声/图片00013.jpg",
+        "caption": "图1-13 胆囊结石声像图，显示强回声伴后方声影，提示含钙结石。",
+        "image_hash": "图片00013",
+        "source": "07_腹部超声.md",
+        "file_size": 0,
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_image",
+        "image_width": null,
+        "image_height": null,
+        "image_format": null,
+        "created_time": null,
+        "result_type": "image",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "image_to_image"
+    },
+    {
+      "doc_id": "4639",
+      "score": 0.39286088943481445,
+      "content": "<image src=\"/api/images/图片00450.jpg\" caption=\"图5-10 交通性鞘膜积液 B.Valsalva动作后，睾丸进入阴囊，网膜和积液进入腹股沟管\"/>",
+      "metadata": {
+        "image_path": "04_浅表器官/图片00450.jpg",
+        "caption": "图5-10 交通性鞘膜积液 B.Valsalva动作后，睾丸进入阴囊，网膜和积液进入腹股沟管",
+        "image_hash": "图片00450",
+        "source": "04_浅表器官.md",
+        "file_size": 0,
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_image",
+        "image_width": null,
+        "image_height": null,
+        "image_format": null,
+        "created_time": null,
+        "result_type": "image",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "image_to_image"
+    },
+    {
+      "doc_id": "7793",
+      "score": 0.3721460998058319,
+      "content": "<image src=\"/api/images/图片00784.jpg\" caption=\"图12-48 肝右叶海绵状血管瘤 A.治疗前瘤体 $10.2\\mathrm{cm}\\times5.7\\mathrm{cm}$；B.治疗4次，疗程2余月，肿瘤缩小至3. $9\\ \\mathrm{cm}\\times2.4\\ \\mathrm{cm}$\"/>",
+      "metadata": {
+        "image_path": "07_腹部超声/图片00784.jpg",
+        "caption": "图12-48 肝右叶海绵状血管瘤 A.治疗前瘤体 $10.2\\mathrm{cm}\\times5.7\\mathrm{cm}$；B.治疗4次，疗程2余月，肿瘤缩小至3. $9\\ \\mathrm{cm}\\times2.4\\ \\mathrm{cm}$",
+        "image_hash": "图片00784",
+        "source": "07_腹部超声.md",
+        "file_size": 0,
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_image",
+        "image_width": null,
+        "image_height": null,
+        "image_format": null,
+        "created_time": null,
+        "result_type": "image",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "image_to_image"
+    },
+    {
+      "doc_id": "4624",
+      "score": 0.36872777342796326,
+      "content": "<image src=\"/api/images/图片00435.jpg\" caption=\"图4-90 乳腺恶性淋巴瘤 CDE显示：血流丰富，为非霍奇金淋巴瘤，属低度恶性\"/>",
+      "metadata": {
+        "image_path": "04_浅表器官/图片00435.jpg",
+        "caption": "图4-90 乳腺恶性淋巴瘤 CDE显示：血流丰富，为非霍奇金淋巴瘤，属低度恶性",
+        "image_hash": "图片00435",
+        "source": "04_浅表器官.md",
+        "file_size": 0,
+        "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
+        "search_strategy": "image_to_image",
+        "image_width": null,
+        "image_height": null,
+        "image_format": null,
+        "created_time": null,
+        "result_type": "image",
+        "query_type": "image_query"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "image_to_image"
+    },
+    {
+      "doc_id": "1691",
+      "score": 0.36009275913238525,
+      "content": "<image src=\"/api/images/图片01203.jpg\" caption=\"图14-8 带状疱疹超声图示病变处表皮下积液\"/>",
+      "metadata": {
+        "image_path": "02_实用浅表/图片01203.jpg",
+        "caption": "图14-8 带状疱疹超声图示病变处表皮下积液",
+        "image_hash": "图片01203",
+        "source": "02_实用浅表.md",
         "file_size": 0,
         "query_image_path": "/media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG/data/book/image/07_腹部超声/图片00008.jpg",
         "search_strategy": "image_to_image",
@@ -66,5 +223,5 @@
       "retrieval_type": "image_to_image"
     }
   ],
-  "total_results": 3
+  "total_results": 10
 }

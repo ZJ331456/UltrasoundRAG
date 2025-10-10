@@ -1,0 +1,294 @@
+/* UltrasoundRAG Vue应用样式 */
+
+:root {
+  --primary-color: #1890ff;
+  --secondary-color: #722ed1;
+  --success-color: #52c41a;
+  --warning-color: #faad14;
+  --error-color: #f5222d;
+  --text-color: rgba(0, 0, 0, 0.85);
+  --text-color-secondary: rgba(0, 0, 0, 0.45);
+  --border-color: #d9d9d9;
+  --background-color: #f5f5f5;
+  --component-background: #ffffff;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* 布局样式 */
+.app-layout {
+  min-height: 100vh;
+}
+
+.app-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 0;
+  line-height: 64px;
+  box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.app-header .logo {
+  float: left;
+  width: 200px;
+  height: 64px;
+  line-height: 64px;
+  padding-left: 24px;
+  color: white;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.app-header .user-info {
+  float: right;
+  margin-right: 24px;
+  color: white;
+}
+
+.app-sider {
+  background: var(--component-background);
+  box-shadow: 2px 0 8px var(--shadow-color);
+}
+
+.app-content {
+  margin: 24px;
+  padding: 24px;
+  background: var(--component-background);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px var(--shadow-color);
+  min-height: calc(100vh - 112px);
+}
+
+/* 卡片样式 */
+.dashboard-card {
+  margin-bottom: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px var(--shadow-color);
+  transition: all 0.3s ease;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px var(--shadow-color);
+}
+
+.metric-card {
+  text-align: center;
+  padding: 24px;
+}
+
+.metric-card .metric-value {
+  font-size: 2rem;
+  font-weight: bold;
+  color: var(--primary-color);
+  margin-bottom: 8px;
+}
+
+.metric-card .metric-label {
+  color: var(--text-color-secondary);
+  font-size: 14px;
+}
+
+/* 搜索样式 */
+.search-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.search-form {
+  background: var(--component-background);
+  padding: 24px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px var(--shadow-color);
+  margin-bottom: 24px;
+}
+
+.search-results {
+  background: var(--component-background);
+  padding: 24px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.result-item {
+  border-bottom: 1px solid var(--border-color);
+  padding: 16px 0;
+  transition: all 0.3s ease;
+}
+
+.result-item:last-child {
+  border-bottom: none;
+}
+
+.result-item:hover {
+  background-color: #fafafa;
+  padding-left: 16px;
+  margin-left: -16px;
+  margin-right: -16px;
+  border-radius: 4px;
+}
+
+/* 上传区域样式 */
+.upload-area {
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 40px;
+  text-align: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.upload-area:hover {
+  border-color: var(--primary-color);
+  background-color: #f9f9f9;
+}
+
+.upload-area.dragover {
+  border-color: var(--primary-color);
+  background-color: #e6f7ff;
+}
+
+/* 状态标签 */
+.status-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-tag.running {
+  background-color: #f6ffed;
+  color: var(--success-color);
+  border: 1px solid #b7eb8f;
+}
+
+.status-tag.error {
+  background-color: #fff2f0;
+  color: var(--error-color);
+  border: 1px solid #ffccc7;
+}
+
+.status-tag.warning {
+  background-color: #fffbe6;
+  color: var(--warning-color);
+  border: 1px solid #ffe58f;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .app-content {
+    margin: 16px;
+    padding: 16px;
+  }
+  
+  .search-form,
+  .search-results {
+    padding: 16px;
+  }
+  
+  .metric-card {
+    padding: 16px;
+  }
+  
+  .metric-card .metric-value {
+    font-size: 1.5rem;
+  }
+}
+
+/* 动画效果 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-enter-from {
+  transform: translateX(-30px);
+  opacity: 0;
+}
+
+.slide-leave-to {
+  transform: translateX(30px);
+  opacity: 0;
+}
+
+/* 加载动画 */
+.loading-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(24, 144, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: var(--primary-color);
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 工具提示样式 */
+.tooltip {
+  position: relative;
+  cursor: help;
+}
+
+.tooltip:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+}

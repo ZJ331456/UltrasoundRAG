@@ -692,3 +692,74 @@ def guide_generate_contextual_prompt(query, context):
 ## 【你的专业回答】
 """
     return prompt
+
+####################################
+# 查询改写prompt
+####################################
+def query_rewrite_prompt(query, context):
+    """
+    查询改写prompt
+    
+    Args:
+        query (str): 用户原始查询
+        context (str): 上下文信息
+        
+    Returns:
+        str: 格式化的查询改写提示词
+    """
+    prompt = f"""你是一位查询扩展专家。请对用户的查询进行扩展或改写，返回5个不同版本的查询。
+
+要求：
+1. 使用同义词或相关词
+2. 将缩写写全
+3. 添加澄清性细节
+4. 改变表达方式
+5. 如果不是英文则翻译成英文
+
+请严格按照示例输出，禁止输出任何解释说明或思考过程，只给出编号列表。
+
+示例：
+输入：超声检查
+输出：
+1. 超声波检查
+2. 超声诊断
+3. 超声影像检查
+4. 超声扫描
+5. ultrasound examination
+
+输入：甲状腺超声
+输出：
+1. 甲状腺超声检查
+2. 甲状腺超声诊断
+3. 甲状腺超声影像
+4. 甲状腺超声扫描
+5. thyroid ultrasound
+
+现在请改写以下查询：
+输入：{query}
+输出："""
+    
+    return prompt
+# def query_rewrite_prompt(query, context):
+#     """
+#     查询改写prompt
+    
+#     Args:
+#         query (str): 用户原始查询
+#         context (str): 上下文信息
+        
+#     Returns:
+#         str: 格式化的查询改写提示词
+#     """
+#     prompt = f"""请将以下查询改写为5个不同版本，直接输出编号列表：
+
+# {query}
+
+# 输出：
+# 1.
+# 2.
+# 3.
+# 4.
+# 5."""
+    
+#     return prompt

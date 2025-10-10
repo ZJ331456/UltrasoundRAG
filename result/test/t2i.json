@@ -1,9 +1,310 @@
 {
   "query": "妊娠中晚期正常乳腺切面",
   "retrieval_type": "t2i_enhanced",
-  "results": [],
-  "total_results": 0,
+  "results": [
+    {
+      "doc_id": "4535",
+      "score": 0.424868931055069,
+      "content": "<image src=\"/api/images/图片00346.jpg\" caption=\"图4-1 正常乳腺 2D显示：腺体呈中强回声，正常的Cooper韧带在与声束垂直时，后方可以有声衰。导管呈低回声\"/>",
+      "metadata": {
+        "image_path": "04_浅表器官/图片00346.jpg",
+        "caption": "图4-1 正常乳腺 2D显示：腺体呈中强回声，正常的Cooper韧带在与声束垂直时，后方可以有声衰。导管呈低回声",
+        "image_hash": "图片00346",
+        "source": "04_浅表器官.md",
+        "file_size": 0,
+        "domain": "",
+        "search_strategy": "enhanced_t2i",
+        "result_type": "unknown",
+        "query_type": "text_query",
+        "rerank_components": {
+          "base": 0.44880789518356323,
+          "overlap": 0.5,
+          "length": 0.525,
+          "position": 0.95,
+          "medical": 0.0
+        },
+        "original_score": 0.287109375,
+        "model_rerank_score": 0.287109375,
+        "rule_score": 0.7463078951835632,
+        "model_score": 0.287109375,
+        "rerank_strategy": "hybrid"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "text_to_image_enhanced"
+    },
+    {
+      "doc_id": "10262",
+      "score": 0.41406158430576323,
+      "content": "<image src=\"/api/images/图片01107.jpg\" caption=\"图34-2-1 正常皮肤声像图 a.真皮层；b.皮下组织层；c.筋膜层\"/>",
+      "metadata": {
+        "image_path": "12_超声医学下/图片01107.jpg",
+        "caption": "图34-2-1 正常皮肤声像图 a.真皮层；b.皮下组织层；c.筋膜层",
+        "image_hash": "图片01107",
+        "source": "12_超声医学下.md",
+        "file_size": 0,
+        "domain": "",
+        "search_strategy": "enhanced_t2i",
+        "result_type": "unknown",
+        "query_type": "text_query",
+        "rerank_components": {
+          "base": 0.4165959060192108,
+          "overlap": 0.25,
+          "length": 0.42000000000000004,
+          "position": 0.82,
+          "medical": 0.2
+        },
+        "original_score": 0.310546875,
+        "model_rerank_score": 0.310546875,
+        "rule_score": 0.6555959060192108,
+        "model_score": 0.310546875,
+        "rerank_strategy": "hybrid"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "text_to_image_enhanced"
+    },
+    {
+      "doc_id": "992",
+      "score": 0.3944032999753952,
+      "content": "<image src=\"/api/images/图片00504.jpg\" caption=\"图6-17 BI-RADS2类 A.单纯囊肿；B.簇状囊肿\"/>",
+      "metadata": {
+        "image_path": "02_实用浅表/图片00504.jpg",
+        "caption": "图6-17 BI-RADS2类 A.单纯囊肿；B.簇状囊肿",
+        "image_hash": "图片00504",
+        "source": "02_实用浅表.md",
+        "file_size": 0,
+        "domain": "",
+        "search_strategy": "enhanced_t2i",
+        "result_type": "unknown",
+        "query_type": "text_query",
+        "rerank_components": {
+          "base": 0.450526624917984,
+          "overlap": 0.0,
+          "length": 0.39,
+          "position": 0.97,
+          "medical": 0.2
+        },
+        "original_score": 0.294921875,
+        "model_rerank_score": 0.294921875,
+        "rule_score": 0.626526624917984,
+        "model_score": 0.294921875,
+        "rerank_strategy": "hybrid"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "text_to_image_enhanced"
+    },
+    {
+      "doc_id": "7032",
+      "score": 0.29714702012538907,
+      "content": "<image src=\"/api/images/图片00020.jpg\" caption=\"图1-19 乳腺恶性病灶，浸润性导管癌：低回声结节，不规则，边界不清，回声不均，伴衰减；左图弹性结节完全蓝色覆盖，弹性显示几乎蓝色覆盖，范围超出二维，评分5分\"/>",
+      "metadata": {
+        "image_path": "07_腹部超声/图片00020.jpg",
+        "caption": "图1-19 乳腺恶性病灶，浸润性导管癌：低回声结节，不规则，边界不清，回声不均，伴衰减；左图弹性结节完全蓝色覆盖，弹性显示几乎蓝色覆盖，范围超出二维，评分5分",
+        "image_hash": "图片00020",
+        "source": "07_腹部超声.md",
+        "file_size": 0,
+        "domain": "",
+        "search_strategy": "enhanced_t2i",
+        "result_type": "unknown",
+        "query_type": "text_query",
+        "rerank_components": {
+          "base": 0.421266108751297,
+          "overlap": 0.25,
+          "length": 0.64,
+          "position": 0.84,
+          "medical": 0.25
+        },
+        "original_score": 0.126953125,
+        "model_rerank_score": 0.126953125,
+        "rule_score": 0.694266108751297,
+        "model_score": 0.126953125,
+        "rerank_strategy": "hybrid"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "text_to_image_enhanced"
+    },
+    {
+      "doc_id": "997",
+      "score": 0.29139233253002167,
+      "content": "<image src=\"/api/images/图片00509.jpg\" caption=\"图6-20 BI-RADS4b类 C、D.浸润性导管癌\"/>",
+      "metadata": {
+        "image_path": "02_实用浅表/图片00509.jpg",
+        "caption": "图6-20 BI-RADS4b类 C、D.浸润性导管癌",
+        "image_hash": "图片00509",
+        "source": "02_实用浅表.md",
+        "file_size": 0,
+        "domain": "",
+        "search_strategy": "enhanced_t2i",
+        "result_type": "unknown",
+        "query_type": "text_query",
+        "rerank_components": {
+          "base": 0.4473806917667389,
+          "overlap": 0.0,
+          "length": 0.38,
+          "position": 0.94,
+          "medical": 0.0
+        },
+        "original_score": 0.16796875,
+        "model_rerank_score": 0.16796875,
+        "rule_score": 0.5793806917667389,
+        "model_score": 0.16796875,
+        "rerank_strategy": "hybrid"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "text_to_image_enhanced"
+    },
+    {
+      "doc_id": "999",
+      "score": 0.26750915324687957,
+      "content": "<image src=\"/api/images/图片00511.jpg\" caption=\"图6-22 BI-RADS5类 A.典型的浸润性导管癌（低回声，边缘成角和毛刺）；B.典型浸润性导管癌（低回声伴微小钙化）\"/>",
+      "metadata": {
+        "image_path": "02_实用浅表/图片00511.jpg",
+        "caption": "图6-22 BI-RADS5类 A.典型的浸润性导管癌（低回声，边缘成角和毛刺）；B.典型浸润性导管癌（低回声伴微小钙化）",
+        "image_hash": "图片00511",
+        "source": "02_实用浅表.md",
+        "file_size": 0,
+        "domain": "",
+        "search_strategy": "enhanced_t2i",
+        "result_type": "unknown",
+        "query_type": "text_query",
+        "rerank_components": {
+          "base": 0.42996540665626526,
+          "overlap": 0.0,
+          "length": 0.55,
+          "position": 0.9,
+          "medical": 0.0
+        },
+        "original_score": 0.1357421875,
+        "model_rerank_score": 0.1357421875,
+        "rule_score": 0.5749654066562653,
+        "model_score": 0.1357421875,
+        "rerank_strategy": "hybrid"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "text_to_image_enhanced"
+    },
+    {
+      "doc_id": "6941",
+      "score": 0.2641166344642639,
+      "content": "<image src=\"/api/images/图片00535.jpg\" caption=\"图10-32 乳腺各层组织声像图，显示乳头、皮肤、皮下脂肪、腺体、胸壁肌层及肋骨等结构的回声特征。\"/>",
+      "metadata": {
+        "image_path": "06_医学影像/图片00535.jpg",
+        "caption": "图10-32 乳腺各层组织声像图，显示乳头、皮肤、皮下脂肪、腺体、胸壁肌层及肋骨等结构的回声特征。",
+        "image_hash": "图片00535",
+        "source": "06_医学影像.md",
+        "file_size": 0,
+        "domain": "",
+        "search_strategy": "enhanced_t2i",
+        "result_type": "unknown",
+        "query_type": "text_query",
+        "rerank_components": {
+          "base": 0.4511622190475464,
+          "overlap": 0.25,
+          "length": 0.49,
+          "position": 0.98,
+          "medical": 0.25
+        },
+        "original_score": 0.0673828125,
+        "model_rerank_score": 0.0673828125,
+        "rule_score": 0.7231622190475464,
+        "model_score": 0.0673828125,
+        "rerank_strategy": "hybrid"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "text_to_image_enhanced"
+    },
+    {
+      "doc_id": "1078",
+      "score": 0.263279697060585,
+      "content": "<image src=\"/api/images/图片00590.jpg\" caption=\"图6-99 女，45岁，乳头溢液，导管扩张 A.中央区导管扩张；B.导管内容物混浊\"/>",
+      "metadata": {
+        "image_path": "02_实用浅表/图片00590.jpg",
+        "caption": "图6-99 女，45岁，乳头溢液，导管扩张 A.中央区导管扩张；B.导管内容物混浊",
+        "image_hash": "图片00590",
+        "source": "02_实用浅表.md",
+        "file_size": 0,
+        "domain": "",
+        "search_strategy": "enhanced_t2i",
+        "result_type": "unknown",
+        "query_type": "text_query",
+        "rerank_components": {
+          "base": 0.4728333652019501,
+          "overlap": 0.0,
+          "length": 0.44999999999999996,
+          "position": 1.0,
+          "medical": 0.0
+        },
+        "original_score": 0.111328125,
+        "model_rerank_score": 0.111328125,
+        "rule_score": 0.6178333652019501,
+        "model_score": 0.111328125,
+        "rerank_strategy": "hybrid"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "text_to_image_enhanced"
+    },
+    {
+      "doc_id": "6943",
+      "score": 0.2587774731874466,
+      "content": "<image src=\"/api/images/图片00537.jpg\" caption=\"图10-34 浆液性乳腺炎 乳腺脓肿边界欠清晰，形态不规则，内可见散在点状强回声。\"/>",
+      "metadata": {
+        "image_path": "06_医学影像/图片00537.jpg",
+        "caption": "图10-34 浆液性乳腺炎 乳腺脓肿边界欠清晰，形态不规则，内可见散在点状强回声。",
+        "image_hash": "图片00537",
+        "source": "06_医学影像.md",
+        "file_size": 0,
+        "domain": "",
+        "search_strategy": "enhanced_t2i",
+        "result_type": "unknown",
+        "query_type": "text_query",
+        "rerank_components": {
+          "base": 0.42316970229148865,
+          "overlap": 0.25,
+          "length": 0.44999999999999996,
+          "position": 0.87,
+          "medical": 0.0
+        },
+        "original_score": 0.099609375,
+        "model_rerank_score": 0.099609375,
+        "rule_score": 0.6301697022914886,
+        "model_score": 0.099609375,
+        "rerank_strategy": "hybrid"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "text_to_image_enhanced"
+    },
+    {
+      "doc_id": "6944",
+      "score": 0.25339369518756866,
+      "content": "<image src=\"/api/images/图片00538.jpg\" caption=\"图10-35 乳腺囊性增生 乳腺腺体内可见多个无回声区，壁薄，后方回声增强。\"/>",
+      "metadata": {
+        "image_path": "06_医学影像/图片00538.jpg",
+        "caption": "图10-35 乳腺囊性增生 乳腺腺体内可见多个无回声区，壁薄，后方回声增强。",
+        "image_hash": "图片00538",
+        "source": "06_医学影像.md",
+        "file_size": 0,
+        "domain": "",
+        "search_strategy": "enhanced_t2i",
+        "result_type": "unknown",
+        "query_type": "text_query",
+        "rerank_components": {
+          "base": 0.4209776818752289,
+          "overlap": 0.25,
+          "length": 0.43500000000000005,
+          "position": 0.83,
+          "medical": 0.0
+        },
+        "original_score": 0.09521484375,
+        "model_rerank_score": 0.09521484375,
+        "rule_score": 0.6224776818752289,
+        "model_score": 0.09521484375,
+        "rerank_strategy": "hybrid"
+      },
+      "resource_collection": "normal_book_image",
+      "retrieval_type": "text_to_image_enhanced"
+    }
+  ],
+  "total_results": 10,
   "domain_filter": null,
   "partitions": null,
-  "response_time": 0.015056371688842773
+  "response_time": 0.09090375900268555
 }

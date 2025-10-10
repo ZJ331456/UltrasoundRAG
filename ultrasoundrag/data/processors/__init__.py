@@ -7,6 +7,7 @@
 - embedding_processor: 向量化和嵌入生成
 - data_cleaner: 数据清洗和标准化
 - batch_processor: 批量处理管道
+- document_updater: 文档更新和增量管理
 """
 
 from .text_processor import TextProcessor
@@ -14,11 +15,14 @@ from .image_processor import ImageProcessor
 from .embedding_processor import EmbeddingProcessor
 from .data_cleaner import DataCleaner
 from .batch_processor import BatchProcessor
+from .document_updater import DocumentUpdateManager, UpdateStats
 
 __all__ = [
     'TextProcessor',
     'ImageProcessor', 
     'EmbeddingProcessor',
     'DataCleaner',
-    'BatchProcessor'
+    'BatchProcessor',
+    'DocumentUpdateManager',
+    'UpdateStats'
 ]

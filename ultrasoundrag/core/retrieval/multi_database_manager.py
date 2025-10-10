@@ -96,7 +96,7 @@ class MultiDatabaseManager:
             'avg_response_time': 0.0
         }
         
-        self.logger.info(f"多数据库管理器初始化完成，加载了 {len(self.databases)} 个数据库配置")
+        self.logger.info(f"多数据库管理器初始化完成，加载了 {len(self.databases)} 个数据库集合配置")
     
     def _load_database_configs(self) -> Dict[str, DatabaseConfig]:
         """从配置文件加载数据库配置"""
@@ -163,6 +163,36 @@ class MultiDatabaseManager:
         
         return available_dbs
     
+    def _detect_collection_type(self, collection_name: str) -> str:
+        """
+        检测集合类型（文本集合还是图片集合）
+        
+        Args:
+            collection_name: 集合名称
+            
+        Returns:
+            "image" 如果集合包含image_vector字段，否则返回 "text"
+        """
+        try:
+            # 创建临时的MilvusManager来检查集合字段
+            temp_manager = MilvusManager(
+                milvus_uri=self.milvus_uri,
+                milvus_token=self.milvus_token,
+                db_name="ultrasound_vector",  # 默认数据库
+                collection_type="md",  # 临时设置，不重要
+                collection_name=collection_name
+            )
+            
+            # 检查是否包含image_vector字段
+            if temp_manager._has_field("image_vector"):
+                return "image"
+            else:
+                return "text"
+                
+        except Exception as e:
+            self.logger.warning(f"检测集合类型时出错: {e}，默认为文本集合")
+            return "text"
+    
     def create_retriever(self, db_name: str, retriever_type: str, **kwargs) -> Any:
         """
         创建指定数据库的检索器
@@ -185,33 +215,16 @@ class MultiDatabaseManager:
         if cache_key in self._retriever_cache:
             return self._retriever_cache[cache_key]
         
-        # 创建检索上下文
-        context = RetrievalContext(
-            db_name=db_config.db_name,
-            text_collection=db_config.text_collection,
-            image_collection=db_config.image_collection,
-            milvus_uri=self.milvus_uri,
-            milvus_token=self.milvus_token,
-            **kwargs
-        )
+        # 检查集合类型兼容性
+        if retriever_type in ["t2t"] and not db_config.text_collection:
+            raise ValueError(f"检索器类型 {retriever_type} 需要文本集合，但数据库 {db_name} 没有配置文本集合")
+        elif retriever_type in ["t2i", "i2t", "i2i", "caption"] and not db_config.image_collection:
+            raise ValueError(f"检索器类型 {retriever_type} 需要图片集合，但数据库 {db_name} 没有配置图片集合")
+        elif retriever_type in ["auto", "multimodal"] and not (db_config.text_collection or db_config.image_collection):
+            raise ValueError(f"检索器类型 {retriever_type} 需要文本集合或图片集合，但数据库 {db_name} 都没有配置")
         
-        # 创建对应的检索器
-        if retriever_type == "t2t":
-            retriever = T2TRetriever(context)
-        elif retriever_type == "t2i":
-            retriever = T2IRetriever(context)
-        elif retriever_type == "i2t":
-            retriever = I2TRetriever(context)
-        elif retriever_type == "i2i":
-            retriever = I2IRetriever(context)
-        elif retriever_type == "caption":
-            retriever = CaptionToImageRetriever(
-                db_name=db_name,
-                milvus_uri=self.milvus_uri,
-                milvus_token=self.milvus_token
-            )
-        else:
-            raise ValueError(f"不支持的检索器类型: {retriever_type}")
+        # 使用通用方法创建检索器
+        retriever = self._create_retriever_for_collection(db_config, retriever_type, **kwargs)
         
         # 缓存检索器
         self._retriever_cache[cache_key] = retriever
@@ -238,8 +251,42 @@ class MultiDatabaseManager:
             # 创建检索器
             retriever = self.create_retriever(db_name, retriever_type, **kwargs)
             
-            # 执行检索
-            result = retriever.search(query, **kwargs)
+            # 添加调试日志
+            self.logger.info(f"开始在数据库 '{db_name}' 中执行 {retriever_type} 检索")
+            self.logger.info(f"查询参数: query='{query}', kwargs={kwargs}")
+            
+            # 执行检索（根据检索器类型调整参数）
+            if retriever_type in ["i2t", "i2i"]:
+                # I2T和I2I检索器期望image_path作为第一个参数
+                self.logger.info(f"调用 {retriever_type} 检索器，image_path='{query}'")
+                result = retriever.search(query, **kwargs)  # 这里query实际上是image_path
+            else:
+                # T2T、T2I和其他检索器期望query作为第一个参数
+                self.logger.info(f"调用 {retriever_type} 检索器，query='{query}'")
+                result = retriever.search(query, **kwargs)
+            
+            self.logger.info(f"检索完成，结果类型: {type(result)}, 包含键: {list(result.keys()) if isinstance(result, dict) else 'N/A'}")
+            
+            # 确保结果格式正确
+            if not isinstance(result, dict):
+                result = {'results': []}
+            
+            # 如果result是RetrievalResult对象，需要序列化
+            if hasattr(result, 'results'):
+                # 处理RetrievalResult对象
+                results_list = []
+                for item in result.results:
+                    if hasattr(item, '__dict__'):
+                        # 序列化对象为字典
+                        item_dict = item.__dict__.copy()
+                        if hasattr(item, 'metadata') and hasattr(item.metadata, '__dict__'):
+                            item_dict['metadata'] = item.metadata.__dict__
+                        results_list.append(item_dict)
+                    else:
+                        results_list.append(item)
+                result = {'results': results_list}
+            elif 'results' not in result:
+                result = {'results': []}
             
             # 添加数据库信息到结果中
             result['database'] = db_name
@@ -251,6 +298,16 @@ class MultiDatabaseManager:
             
             return result
             
+        except ValueError as e:
+            # 检索器类型不兼容的情况（如文本集合尝试图片检索）
+            self.logger.warning(f"在数据库 '{db_name}' 中跳过不兼容的检索器类型 '{retriever_type}': {e}")
+            return {
+                'database': db_name,
+                'skipped': True,
+                'reason': str(e),
+                'results': [],
+                'total_results': 0
+            }
         except Exception as e:
             self.logger.error(f"在数据库 '{db_name}' 中检索失败: {e}")
             return {
@@ -260,11 +317,227 @@ class MultiDatabaseManager:
                 'total_results': 0
             }
     
+    def search_by_collections(self, text_collections: List[str], 
+                            image_collections: List[str], retriever_type: str, 
+                            query: Any = None, text_query: Optional[str] = None, 
+                            image_path: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """
+        基于集合列表执行检索（新的核心方法）
+        
+        Args:
+            text_collections: 文本集合列表
+            image_collections: 图片集合列表  
+            retriever_type: 检索器类型
+            query: 查询内容（向后兼容）
+            text_query: 明确的文本查询（用于图文混合）
+            image_path: 明确的图片路径（用于图文混合）
+            **kwargs: 额外参数
+            
+        Returns:
+            聚合后的检索结果
+        """
+        start_time = time.time()
+        
+        # 解析输入参数（使用modular_retrievers中的方法）
+        from .modular_retrievers import EnhancedMultimodalRetriever
+        temp_retriever = EnhancedMultimodalRetriever(RetrievalContext(
+            db_name="temp", text_collection="", image_collection=""
+        ))
+        parsed_input = temp_retriever._parse_input(query, text_query, image_path)
+        self.logger.info(f"MultiDatabaseManager输入解析结果: {parsed_input}")
+        
+        # 根据检索器类型确定要搜索的集合
+        target_collections = []
+        
+        if retriever_type == "t2t":
+            # 文本到文本，只搜索文本集合
+            target_collections = [(col, "text") for col in text_collections if col]
+        elif retriever_type == "t2i":
+            # 文本到图片，只搜索图片集合
+            target_collections = [(col, "image") for col in image_collections if col]
+        elif retriever_type == "i2t":
+            # 图片到文本，只搜索文本集合
+            target_collections = [(col, "text") for col in text_collections if col]
+        elif retriever_type == "i2i":
+            # 图片到图片，只搜索图片集合
+            target_collections = [(col, "image") for col in image_collections if col]
+        elif retriever_type in ["auto", "multimodal"]:
+            # 混合模式，使用EnhancedMultimodalRetriever进行图文混合检索
+            return self._handle_multimodal_search(
+                text_collections, image_collections, parsed_input, **kwargs
+            )
+        
+        if not target_collections:
+            return {
+                'error': f'检索器类型 {retriever_type} 没有找到对应的集合',
+                'results': [],
+                'total_results': 0,
+                'debug_info': {
+                    'retriever_type': retriever_type,
+                    'text_collections': text_collections,
+                    'image_collections': image_collections
+                }
+            }
+        
+        # 执行检索
+        results_by_collection = {}
+        all_results = []
+        
+        for collection_name, collection_type in target_collections:
+            # 为每个集合创建临时数据库配置
+            temp_db_config = self._create_temp_database_config(collection_name, collection_type)
+            collection_key = f"{collection_name}_{collection_type}"
+            
+            try:
+                # 创建检索器并执行检索
+                retriever = self._create_retriever_for_collection(
+                    temp_db_config, retriever_type, **kwargs
+                )
+                
+                self.logger.info(f"在集合 '{collection_name}' (类型: {collection_type}) 中执行 {retriever_type} 检索")
+                
+                # 执行检索
+                if retriever_type in ["i2t", "i2i"]:
+                    # I2T和I2I检索器需要图片路径
+                    search_input = parsed_input['image_path']
+                    if not search_input:
+                        raise ValueError(f"{retriever_type}检索需要图片路径")
+                    result = retriever.search(search_input, **kwargs)
+                else:
+                    # T2T和T2I检索器需要文本查询
+                    search_input = parsed_input['text_query']
+                    if not search_input:
+                        raise ValueError(f"{retriever_type}检索需要文本查询")
+                    result = retriever.search(search_input, **kwargs)
+                
+                # 处理结果
+                if isinstance(result, dict) and 'results' in result:
+                    collection_results = result['results']
+                else:
+                    collection_results = []
+                
+                results_by_collection[collection_key] = {
+                    'collection_name': collection_name,
+                    'collection_type': collection_type,
+                    'results': collection_results,
+                    'total_results': len(collection_results)
+                }
+                
+                # 添加到聚合结果中
+                for res in collection_results:
+                    if hasattr(res, 'metadata'):
+                        res.metadata['source_collection'] = collection_name
+                        res.metadata['collection_type'] = collection_type
+                    all_results.append(res)
+                    
+            except Exception as e:
+                self.logger.warning(f"在集合 '{collection_name}' 中检索失败: {e}")
+                results_by_collection[collection_key] = {
+                    'collection_name': collection_name,
+                    'collection_type': collection_type,
+                    'error': str(e),
+                    'results': [],
+                    'total_results': 0
+                }
+        
+        # 聚合和排序结果
+        all_results.sort(key=lambda x: getattr(x, 'score', 0), reverse=True)
+        
+        # 限制结果数量
+        max_results = kwargs.get('top_k', 10)
+        final_results = all_results[:max_results]
+        
+        # 构建最终结果
+        final_result = {
+            'query': query,
+            'retrieval_type': retriever_type,
+            'text_collections': text_collections,
+            'image_collections': image_collections,
+            'results_by_collection': results_by_collection,
+            'results': final_results,
+            'total_collections_searched': len(target_collections),
+            'total_results': len(final_results),
+            'response_time': time.time() - start_time
+        }
+        
+        return final_result
+    
+    def _create_retriever_for_collection(self, db_config: DatabaseConfig, retriever_type: str, **kwargs) -> Any:
+        """
+        为集合创建检索器（重构后的通用方法）
+        
+        Args:
+            db_config: 数据库配置
+            retriever_type: 检索器类型
+            **kwargs: 额外参数
+            
+        Returns:
+            检索器实例
+        """
+        # 创建检索上下文
+        context = RetrievalContext(
+            db_name=db_config.db_name,
+            text_collection=db_config.text_collection,
+            image_collection=db_config.image_collection,
+            milvus_uri=self.milvus_uri,
+            milvus_token=self.milvus_token,
+            **kwargs
+        )
+        
+        # 创建对应的检索器
+        if retriever_type == "t2t":
+            return T2TRetriever(context)
+        elif retriever_type == "t2i":
+            return T2IRetriever(context)
+        elif retriever_type == "i2t":
+            return I2TRetriever(context)
+        elif retriever_type == "i2i":
+            return I2IRetriever(context)
+        elif retriever_type == "caption":
+            return CaptionToImageRetriever(
+                db_name=db_config.name,
+                milvus_uri=self.milvus_uri,
+                milvus_token=self.milvus_token
+            )
+        elif retriever_type in ["auto", "multimodal"]:
+            # 对于auto和multimodal模式，使用EnhancedMultimodalRetriever
+            from .modular_retrievers import EnhancedMultimodalRetriever
+            return EnhancedMultimodalRetriever(context)
+        else:
+            raise ValueError(f"不支持的检索器类型: {retriever_type}")
+
+    def _create_temp_database_config(self, collection_name: str, collection_type: str) -> DatabaseConfig:
+        """为单个集合创建临时数据库配置"""
+        if collection_type == "text":
+            return DatabaseConfig(
+                name=f"temp_{collection_name}",
+                db_name="ultrasound_vector",
+                text_collection=collection_name,
+                image_collection="",
+                db_type=DatabaseType.GENERAL,
+                priority=1,
+                enabled=True,
+                description=f"临时配置（文本集合）：{collection_name}",
+                tags=[]
+            )
+        else:  # image
+            return DatabaseConfig(
+                name=f"temp_{collection_name}",
+                db_name="ultrasound_vector",
+                text_collection="",
+                image_collection=collection_name,
+                db_type=DatabaseType.GENERAL,
+                priority=1,
+                enabled=True,
+                description=f"临时配置（图片集合）：{collection_name}",
+                tags=[]
+            )
+
     def search_multiple_databases(self, strategy: RetrievalStrategy, 
                                 retriever_type: str, query: Any, 
                                 **kwargs) -> Dict[str, Any]:
         """
-        在多个数据库中执行检索
+        在多个数据库中执行检索（保持向后兼容）
         
         Args:
             strategy: 检索策略
@@ -275,52 +548,30 @@ class MultiDatabaseManager:
         Returns:
             聚合后的检索结果
         """
-        start_time = time.time()
+        # 从数据库配置中提取集合列表
+        text_collections = []
+        image_collections = []
         
-        # 验证数据库列表
-        valid_databases = [db for db in strategy.databases if db in self.databases]
-        if not valid_databases:
-            return {
-                'error': '没有有效的数据库',
-                'results': [],
-                'total_results': 0
-            }
+        for db_name in strategy.databases:
+            if db_name in self.databases:
+                config = self.databases[db_name]
+                if config.text_collection:
+                    text_collections.append(config.text_collection)
+                if config.image_collection:
+                    image_collections.append(config.image_collection)
+            else:
+                # 直接当作集合名称处理
+                from ...core.indexing import list_collections
+                collection_names = list_collections()
+                if db_name in collection_names:
+                    collection_type = self._detect_collection_type(db_name)
+                    if collection_type == "image":
+                        image_collections.append(db_name)
+                    else:
+                        text_collections.append(db_name)
         
-        # 并行执行检索（这里简化为串行）
-        results_by_db = {}
-        all_results = []
-        
-        for db_name in valid_databases:
-            db_result = self.search_single_database(
-                db_name, retriever_type, query, 
-                top_k=strategy.max_results_per_db, 
-                **kwargs
-            )
-            
-            results_by_db[db_name] = db_result
-            
-            # 为每个结果添加数据库来源信息
-            for result in db_result.get('results', []):
-                result.metadata['source_database'] = db_name
-                result.metadata['database_priority'] = self.databases[db_name].priority
-                all_results.append(result)
-        
-        # 聚合结果
-        aggregated_results = self._aggregate_results(all_results, strategy)
-        
-        # 构建最终结果
-        final_result = {
-            'query': query,
-            'retrieval_type': retriever_type,
-            'strategy': strategy.__dict__,
-            'results_by_database': results_by_db,
-            'aggregated_results': aggregated_results,
-            'total_databases_searched': len(valid_databases),
-            'total_results': len(aggregated_results),
-            'response_time': time.time() - start_time
-        }
-        
-        return final_result
+        # 使用新的基于集合的搜索方法
+        return self.search_by_collections(text_collections, image_collections, retriever_type, query, **kwargs)
     
     def search_by_tags(self, tags: List[str], retriever_type: str, 
                       query: Any, **kwargs) -> Dict[str, Any]:
@@ -469,6 +720,181 @@ class MultiDatabaseManager:
                 unique_results.append(result)
         
         return unique_results
+    
+    
+    def _handle_multimodal_search(self, text_collections: List[str], image_collections: List[str], 
+                                 parsed_input: Dict[str, Optional[str]], **kwargs) -> Dict[str, Any]:
+        """
+        处理多模态检索（auto/multimodal模式）
+        
+        Args:
+            text_collections: 文本集合列表
+            image_collections: 图片集合列表
+            parsed_input: 解析后的输入参数
+            **kwargs: 额外参数
+            
+        Returns:
+            多模态检索结果
+        """
+        start_time = time.time()
+        
+        text_query = parsed_input['text_query']
+        image_path = parsed_input['image_path']
+        
+        self.logger.info(f"MultiDatabaseManager多模态检索: text_query='{text_query}', image_path='{image_path}'")
+        
+        # 创建EnhancedMultimodalRetriever
+        from .modular_retrievers import EnhancedMultimodalRetriever, RetrievalContext
+        
+        # 为每个集合创建检索器并执行检索
+        all_results = []
+        results_by_collection = {}
+        
+        # 处理文本集合
+        for collection_name in text_collections:
+            if not collection_name:
+                continue
+                
+            try:
+                # 创建临时数据库配置
+                temp_db_config = self._create_temp_database_config(collection_name, "text")
+                
+                # 创建EnhancedMultimodalRetriever
+                multimodal_retriever = self._create_retriever_for_collection(
+                    temp_db_config, "multimodal", **kwargs
+                )
+                
+                # 执行多模态检索
+                self.logger.info(f"在文本集合 '{collection_name}' 中执行多模态检索")
+                result = multimodal_retriever.search(
+                    query=text_query or image_path,
+                    mode="multimodal",
+                    text_query=text_query,
+                    image_path=image_path,
+                    **kwargs
+                )
+                
+                # 处理结果
+                collection_results = result.get('results', [])
+                results_by_collection[f"{collection_name}_text"] = {
+                    'collection_name': collection_name,
+                    'collection_type': 'text',
+                    'results': collection_results,
+                    'total_results': len(collection_results),
+                    'retrieval_breakdown': result.get('retrieval_breakdown', {}),
+                    'component_counts': result.get('component_counts', {})
+                }
+                
+                # 添加到聚合结果中
+                for res in collection_results:
+                    if hasattr(res, 'metadata'):
+                        res.metadata['source_collection'] = collection_name
+                        res.metadata['collection_type'] = 'text'
+                    all_results.append(res)
+                    
+            except Exception as e:
+                self.logger.warning(f"在文本集合 '{collection_name}' 中多模态检索失败: {e}")
+                results_by_collection[f"{collection_name}_text"] = {
+                    'collection_name': collection_name,
+                    'collection_type': 'text',
+                    'error': str(e),
+                    'results': [],
+                    'total_results': 0
+                }
+        
+        # 处理图片集合
+        for collection_name in image_collections:
+            if not collection_name:
+                continue
+                
+            try:
+                # 创建临时数据库配置
+                temp_db_config = self._create_temp_database_config(collection_name, "image")
+                
+                # 创建EnhancedMultimodalRetriever
+                multimodal_retriever = self._create_retriever_for_collection(
+                    temp_db_config, "multimodal", **kwargs
+                )
+                
+                # 执行多模态检索
+                self.logger.info(f"在图片集合 '{collection_name}' 中执行多模态检索")
+                result = multimodal_retriever.search(
+                    query=text_query or image_path,
+                    mode="multimodal",
+                    text_query=text_query,
+                    image_path=image_path,
+                    **kwargs
+                )
+                
+                # 处理结果
+                collection_results = result.get('results', [])
+                results_by_collection[f"{collection_name}_image"] = {
+                    'collection_name': collection_name,
+                    'collection_type': 'image',
+                    'results': collection_results,
+                    'total_results': len(collection_results),
+                    'retrieval_breakdown': result.get('retrieval_breakdown', {}),
+                    'component_counts': result.get('component_counts', {})
+                }
+                
+                # 添加到聚合结果中
+                for res in collection_results:
+                    if hasattr(res, 'metadata'):
+                        res.metadata['source_collection'] = collection_name
+                        res.metadata['collection_type'] = 'image'
+                    all_results.append(res)
+                    
+            except Exception as e:
+                self.logger.warning(f"在图片集合 '{collection_name}' 中多模态检索失败: {e}")
+                results_by_collection[f"{collection_name}_image"] = {
+                    'collection_name': collection_name,
+                    'collection_type': 'image',
+                    'error': str(e),
+                    'results': [],
+                    'total_results': 0
+                }
+        
+        # 聚合和排序结果
+        all_results.sort(key=lambda x: getattr(x, 'score', 0), reverse=True)
+        
+        # 限制结果数量
+        max_results = kwargs.get('top_k', 10)
+        final_results = all_results[:max_results]
+        
+        # 构建最终结果
+        final_result = {
+            'query': text_query or image_path,
+            'text_query': text_query,
+            'image_path': image_path,
+            'retrieval_type': 'multimodal',
+            'text_collections': text_collections,
+            'image_collections': image_collections,
+            'results_by_collection': results_by_collection,
+            'results': final_results,
+            'total_collections_searched': len(text_collections) + len(image_collections),
+            'total_results': len(final_results),
+            'response_time': time.time() - start_time
+        }
+        
+        return final_result
+
+    def _is_image_path(self, query: Any) -> bool:
+        """判断输入是否为图片路径"""
+        if not isinstance(query, str):
+            return False
+        
+        # 检查是否是文件路径
+        import os
+        if os.path.exists(query):
+            # 检查文件扩展名
+            _, ext = os.path.splitext(query.lower())
+            image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'}
+            return ext in image_extensions
+        
+        # 如果文件不存在，但路径格式像图片文件
+        _, ext = os.path.splitext(query.lower())
+        image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'}
+        return ext in image_extensions
     
     def _update_stats(self, db_name: str, retriever_type: str, response_time: float):
         """更新统计信息"""

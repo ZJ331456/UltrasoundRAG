@@ -1,0 +1,39 @@
+{
+  "name": "ultrasoundrag-vue",
+  "version": "3.0.0",
+  "description": "UltrasoundRAG Vue前端界面",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "vite preview --port 5173",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore"
+  },
+  "dependencies": {
+    "vue": "^3.5.18",
+    "vue-router": "^4.2.4",
+    "pinia": "^2.1.6",
+    "axios": "^1.5.0",
+    "ant-design-vue": "^4.0.0",
+    "@ant-design/icons-vue": "^7.0.0",
+    "dayjs": "^1.11.9",
+    "lodash-es": "^4.17.21",
+    "chart.js": "^4.4.0",
+    "vue-chartjs": "^5.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "vite": "^7.0.6",
+    "vite-plugin-vue-devtools": "^8.0.0",
+    "eslint": "^8.47.0",
+    "eslint-plugin-vue": "^9.17.0",
+    "@vue/eslint-config-prettier": "^8.0.0",
+    "prettier": "^3.0.2",
+    "sass": "^1.66.1"
+  }
+}

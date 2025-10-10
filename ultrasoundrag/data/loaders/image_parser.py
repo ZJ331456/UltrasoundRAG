@@ -119,6 +119,42 @@ class ImageParser:
             print(f"生成caption向量失败: {e}，使用零向量")
             return [0.0] * 768
 
+    def parse_single_file(self, file_path: str, original_filename: str = None) -> List[Dict]:
+        """
+        解析单个图片文件
+        
+        Args:
+            file_path: 图片文件完整路径
+            original_filename: 原始文件名（用于file字段）
+            
+        Returns:
+            处理后的图片数据列表
+        """
+        if not os.path.exists(file_path):
+            print(f"文件不存在: {file_path}")
+            return []
+        
+        print(f"处理单个图片文件: {file_path}")
+        
+        # 使用原始文件名，如果没有则使用文件路径
+        if original_filename:
+            file_field = original_filename
+        else:
+            file_field = os.path.relpath(file_path, self.base_image_path)
+        
+        # 创建单个图片数据
+        image_data = {
+            'id': 1,
+            'image_path': file_field,
+            'caption': os.path.basename(file_path).replace('.jpg', '').replace('.png', '').replace('.jpeg', ''),
+            'source': 'uploaded',
+            'file': file_field,
+            'document_name': os.path.basename(file_path).replace('.jpg', '').replace('.png', '').replace('.jpeg', '')
+        }
+        
+        print(f"处理了 1 个图片文件")
+        return [image_data]
+
     def parse_images(self) -> List[Dict]:
         """
         解析所有图片数据，返回包含所需字段的列表。

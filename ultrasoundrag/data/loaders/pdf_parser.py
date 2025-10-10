@@ -432,6 +432,40 @@ class PDFParser:
         common_words = chunk_words.intersection(ocr_words)
         return len(common_words) > 0
     
+    def parse_single_file(self, file_path: str, original_filename: str = None) -> List[Dict]:
+        """
+        解析单个PDF文件
+        
+        Args:
+            file_path: PDF文件完整路径
+            original_filename: 原始文件名（用于file字段）
+            
+        Returns:
+            处理后的文档块列表
+        """
+        if not os.path.exists(file_path):
+            print(f"文件不存在: {file_path}")
+            return []
+        
+        print(f"处理单个PDF文件: {file_path}")
+        chunks = self.process_document(file_path)
+        all_chunks = []
+        chunk_id = 1
+        
+        for chunk in chunks:
+            chunk['id'] = chunk_id
+            # 使用原始文件名，如果没有则使用文件路径
+            if original_filename:
+                chunk['file'] = original_filename
+            else:
+                chunk['file'] = os.path.relpath(file_path, self.base_pdf_path)
+            chunk['document_name'] = os.path.basename(file_path).replace('.pdf', '')
+            all_chunks.append(chunk)
+            chunk_id += 1
+        
+        print(f"总共解析了 {len(all_chunks)} 个文档块")
+        return all_chunks
+    
     def parse_pdfs(self) -> List[Dict]:
         """
         解析所有PDF文件

@@ -32,6 +32,20 @@ from .retrieval import (
     create_multi_database_manager
 )
 
+# 查询处理
+from .query import (
+    QueryProcessor,
+    QueryTextProcessor,
+    TermWeightCalculator,
+    SynonymLookup,
+    MatchTextExpr,
+    create_query_processor,
+    create_text_processor,
+    create_term_weight_calculator,
+    create_synonym_lookup,
+    create_fulltext_queryer  # 向后兼容
+)
+
 # 评估测试相关
 from .evaluation import (
     TestRunner,
@@ -75,6 +89,18 @@ __all__ = [
     'create_i2i_retriever',
     'create_caption_retriever',
     'create_multi_database_manager',
+    
+    # 查询处理
+    'QueryProcessor',
+    'QueryTextProcessor',
+    'TermWeightCalculator',
+    'SynonymLookup',
+    'MatchTextExpr',
+    'create_query_processor',
+    'create_text_processor',
+    'create_term_weight_calculator',
+    'create_synonym_lookup',
+    'create_fulltext_queryer',  # 向后兼容
     
     # 测试评估
     'TestRunner',
