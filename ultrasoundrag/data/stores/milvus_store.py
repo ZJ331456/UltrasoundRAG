@@ -3,6 +3,7 @@ from typing import List, Dict, Optional, Union, Tuple, Any
 from pymilvus import MilvusClient, DataType
 from ultrasoundrag.config import config  # 添加导入
 from ultrasoundrag.utils.logger import setup_logger
+from ultrasoundrag.data.processors.bm25_encoder import get_bm25_encoder, save_global_bm25_encoder  # BM25混合检索
 
 class MilvusManager:
     """
@@ -229,13 +230,21 @@ class MilvusManager:
     
     def _setup_database(self):
         """设置Milvus数据库"""
-        if self.db_name not in self.client.list_databases():
-            self.client.create_database(db_name=self.db_name)
-            self.logger.info(f"数据库 '{self.db_name}' 创建成功")
-        else:
-            self.logger.debug(f"数据库 '{self.db_name}' 已存在")
-        
-        self.client.use_database(self.db_name)
+        try:
+            # 尝试检查数据库是否存在
+            if self.db_name not in self.client.list_databases():
+                self.client.create_database(db_name=self.db_name)
+                self.logger.info(f"数据库 '{self.db_name}' 创建成功")
+            else:
+                self.logger.debug(f"数据库 '{self.db_name}' 已存在")
+            
+            self.client.use_database(self.db_name)
+        except Exception as e:
+            # Milvus Lite不支持数据库操作，跳过
+            if 'UNIMPLEMENTED' in str(e) or '本地模式' in str(e):
+                self.logger.debug(f"Milvus Lite模式，跳过数据库设置")
+            else:
+                raise
     
     def _setup_collection(self):
         """设置Milvus集合"""
@@ -252,9 +261,15 @@ class MilvusManager:
             schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
             
             if self.collection_type == "md":
-                # MD集合字段（双向量：Qwen3 1024维 + FetalCLIP 768维）
+                # MD集合字段（双向量：Qwen3 1024维 + FetalCLIP 768维 + BM25元数据）
                 schema.add_field(field_name="text_vector_qwen_1024", datatype=DataType.FLOAT_VECTOR, dim=1024)
                 schema.add_field(field_name="text_vector_clip_768", datatype=DataType.FLOAT_VECTOR, dim=768)
+                
+                # ============ 新增：BM25元数据字段（用于混合检索） ============
+                # 注意：暂不使用SPARSE_FLOAT_VECTOR，用tokens和doc_length存储BM25信息
+                # BM25评分将在程序中实现
+                # schema.add_field(field_name="bm25_sparse_vector", datatype=DataType.SPARSE_FLOAT_VECTOR)
+                
                 # 将 content 提升到 Milvus VARCHar 上限，减少插入失败
                 schema.add_field(field_name="content", datatype=DataType.VARCHAR, max_length=65535)
                 schema.add_field(field_name="file", datatype=DataType.VARCHAR, max_length=512)
@@ -266,11 +281,25 @@ class MilvusManager:
                 schema.add_field(field_name=self.domain_field_name, datatype=DataType.VARCHAR, max_length=128)
                 schema.add_field(field_name="is_deleted", datatype=DataType.BOOL)
                 
+                # ============ 新增：BM25相关辅助字段 ============
+                schema.add_field(field_name="tokens", datatype=DataType.VARCHAR, max_length=65535)  # 分词结果
+                schema.add_field(field_name="doc_length", datatype=DataType.INT64)  # 文档长度
+                
                 # 索引
                 index_params = self.client.prepare_index_params()
                 index_params.add_index(field_name="id", index_type="AUTOINDEX")
                 index_params.add_index(field_name="text_vector_qwen_1024", index_type="HNSW", metric_type="COSINE")
                 index_params.add_index(field_name="text_vector_clip_768", index_type="HNSW", metric_type="COSINE")
+                
+                # ============ 新增：BM25稀疏向量索引 ============
+                # 注意：暂时跳过稀疏向量索引（Milvus Lite可能不完全支持）
+                # 稀疏向量字段已添加到schema，可以存储和查询，但不建立索引
+                # index_params.add_index(
+                #     field_name="bm25_sparse_vector",
+                #     index_type="SPARSE_INVERTED_INDEX",
+                #     metric_type="IP"
+                # )
+                
                 index_params.add_index(field_name="title", index_type="AUTOINDEX")
                 index_params.add_index(field_name="file", index_type="AUTOINDEX")
                 index_params.add_index(field_name="document_name", index_type="AUTOINDEX")
@@ -279,9 +308,15 @@ class MilvusManager:
                 index_params.add_index(field_name="is_deleted", index_type="AUTOINDEX")
                 
             elif self.collection_type == "pdf":
-                # PDF集合字段（双向量：Qwen3 1024维 + FetalCLIP 768维）
+                # PDF集合字段（双向量：Qwen3 1024维 + FetalCLIP 768维 + BM25元数据）
                 schema.add_field(field_name="text_vector_qwen_1024", datatype=DataType.FLOAT_VECTOR, dim=1024)
                 schema.add_field(field_name="text_vector_clip_768", datatype=DataType.FLOAT_VECTOR, dim=768)
+                
+                # ============ 新增：BM25元数据字段（用于混合检索） ============
+                # 注意：暂不使用SPARSE_FLOAT_VECTOR，用tokens和doc_length存储BM25信息
+                # BM25评分将在程序中实现
+                # schema.add_field(field_name="bm25_sparse_vector", datatype=DataType.SPARSE_FLOAT_VECTOR)
+                
                 # 将 content 提升到 Milvus VARCHar 上限，减少插入失败
                 schema.add_field(field_name="content", datatype=DataType.VARCHAR, max_length=65535)
                 schema.add_field(field_name="file", datatype=DataType.VARCHAR, max_length=512)
@@ -295,11 +330,25 @@ class MilvusManager:
                 schema.add_field(field_name=self.domain_field_name, datatype=DataType.VARCHAR, max_length=128)
                 schema.add_field(field_name="is_deleted", datatype=DataType.BOOL)
                 
+                # ============ 新增：BM25相关辅助字段 ============
+                schema.add_field(field_name="tokens", datatype=DataType.VARCHAR, max_length=65535)  # 分词结果
+                schema.add_field(field_name="doc_length", datatype=DataType.INT64)  # 文档长度
+                
                 # 索引
                 index_params = self.client.prepare_index_params()
                 index_params.add_index(field_name="id", index_type="AUTOINDEX")
                 index_params.add_index(field_name="text_vector_qwen_1024", index_type="HNSW", metric_type="COSINE")
                 index_params.add_index(field_name="text_vector_clip_768", index_type="HNSW", metric_type="COSINE")
+                
+                # ============ 新增：BM25稀疏向量索引 ============
+                # 注意：暂时跳过稀疏向量索引（Milvus Lite可能不完全支持）
+                # 稀疏向量字段已添加到schema，可以存储和查询，但不建立索引
+                # index_params.add_index(
+                #     field_name="bm25_sparse_vector",
+                #     index_type="SPARSE_INVERTED_INDEX",
+                #     metric_type="IP"
+                # )
+                
                 index_params.add_index(field_name="title", index_type="AUTOINDEX")
                 index_params.add_index(field_name="file", index_type="AUTOINDEX")
                 index_params.add_index(field_name="document_name", index_type="AUTOINDEX")
@@ -438,10 +487,29 @@ class MilvusManager:
                         print(f"警告：第 {i + 1} 个块的CLIP向量维度为 {len(vec_clip)}，期望768")
                         vec_clip = None
                     
+                    # ============ 新增：生成BM25稀疏向量 ============
+                    try:
+                        bm25_encoder = get_bm25_encoder()
+                        bm25_data = bm25_encoder.encode_to_milvus_format(content)
+                        bm25_sparse_vector = bm25_data['bm25_sparse_vector']
+                        tokens = bm25_data['tokens']
+                        doc_length = bm25_data['doc_length']
+                        
+                        # 更新全局统计（用于IDF计算）
+                        if tokens:
+                            token_list = tokens.split(',')
+                            bm25_encoder.update_statistics(token_list)
+                    except Exception as e:
+                        self.logger.warning(f"生成BM25向量失败: {e}，使用空向量")
+                        bm25_sparse_vector = {}
+                        tokens = ''
+                        doc_length = 0
+                    
                     insert_data = {
                         "id": int(data.get('id', i + 1)),
                         "text_vector_qwen_1024": vec_qwen if vec_qwen is not None else [0.0] * 1024,
                         "text_vector_clip_768": vec_clip if vec_clip is not None else [0.0] * 768,
+                        # "bm25_sparse_vector": bm25_sparse_vector,  # 暂不使用
                         "content": content,
                         "file": data.get('file', data.get('md_file', ''))[:512],
                         "title": data.get('title', '')[:512],
@@ -450,7 +518,9 @@ class MilvusManager:
                         "document_name": data.get('document_name', '')[:256],
                         "chunk_index": int(data.get('chunk_index', 0)),
                         self.domain_field_name: (domain_values[i] if domain_values and i < len(domain_values) else data.get(self.domain_field_name, ''))[:128] if (domain_values or data.get(self.domain_field_name)) else "",
-                        "is_deleted": bool(data.get('is_deleted', False))
+                        "is_deleted": bool(data.get('is_deleted', False)),
+                        "tokens": tokens[:65535],  # BM25分词结果
+                        "doc_length": doc_length  # 文档长度
                     }
                     
                 elif self.collection_type == "pdf":
@@ -509,10 +579,29 @@ class MilvusManager:
                         print(f"警告：第 {i + 1} 个块的CLIP向量维度为 {len(vec_clip)}，期望768")
                         vec_clip = None
                     
+                    # ============ 新增：生成BM25稀疏向量 ============
+                    try:
+                        bm25_encoder = get_bm25_encoder()
+                        bm25_data = bm25_encoder.encode_to_milvus_format(content)
+                        bm25_sparse_vector = bm25_data['bm25_sparse_vector']
+                        tokens = bm25_data['tokens']
+                        doc_length = bm25_data['doc_length']
+                        
+                        # 更新全局统计（用于IDF计算）
+                        if tokens:
+                            token_list = tokens.split(',')
+                            bm25_encoder.update_statistics(token_list)
+                    except Exception as e:
+                        self.logger.warning(f"生成BM25向量失败: {e}，使用空向量")
+                        bm25_sparse_vector = {}
+                        tokens = ''
+                        doc_length = 0
+                    
                     insert_data = {
                         "id": int(data.get('id', i + 1)),
                         "text_vector_qwen_1024": vec_qwen if vec_qwen is not None else [0.0] * 1024,
                         "text_vector_clip_768": vec_clip if vec_clip is not None else [0.0] * 768,
+                        # "bm25_sparse_vector": bm25_sparse_vector,  # 暂不使用
                         "content": content,
                         "file": data.get('file', data.get('pdf_file', ''))[:512],
                         "title": data.get('title', '')[:512],
@@ -523,7 +612,9 @@ class MilvusManager:
                         "page_start": int(data.get('page_start', 0)),
                         "page_end": int(data.get('page_end', 0)),
                         self.domain_field_name: (domain_values[i] if domain_values and i < len(domain_values) else data.get(self.domain_field_name, ''))[:128] if (domain_values or data.get(self.domain_field_name)) else "",
-                        "is_deleted": bool(data.get('is_deleted', False))
+                        "is_deleted": bool(data.get('is_deleted', False)),
+                        "tokens": tokens[:65535],  # BM25分词结果
+                        "doc_length": doc_length  # 文档长度
                     }
                     
                 elif self.collection_type == "image":
@@ -589,6 +680,14 @@ class MilvusManager:
                 
                 if (i + 1) % 100 == 0:
                     print(f"已处理 {i + 1}/{len(data_list)} 个数据")
+                
+                # ============ 新增：定期保存BM25编码器状态 ============
+                if (i + 1) % 1000 == 0 and self.collection_type in ["md", "pdf"]:
+                    try:
+                        save_global_bm25_encoder()
+                        self.logger.info(f"已保存BM25编码器状态 (处理了 {i + 1} 条数据)")
+                    except Exception as e:
+                        self.logger.warning(f"保存BM25编码器状态失败: {e}")
                     
             except ConnectionError as e:
                 self.logger.error(f"数据库连接失败，插入第 {i + 1} 个数据时出错: {e}")

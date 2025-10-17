@@ -15,8 +15,8 @@ milvus:
     milvus_uri: "http://localhost:19530"
     milvus_token: "root:Milvus"
     db_name: "ultrasound_vector"
-    md_collection_name: "thyroidagent"
-    image_collection_name: "images"
+    md_collection_name: "normal_book_md"  # 统一使用与databases.default一致的集合名
+    image_collection_name: "normal_book_image"  # 统一使用与databases.default一致的集合名
     pdf_collection_name: "thesis_papers"
 # 索引创建的总配置
 indexing:
@@ -176,7 +176,7 @@ retriever:
     t2t:
       enabled: true
       similarity_threshold: 0.2  # T2T专用阈值
-      strategy: "fusion"  # "basic" 或 "fusion"
+      strategy: "hybrid"  # "basic", "fusion", "enhanced", "hybrid"（hybrid=BM25混合检索）
       fusion_config:
         text_search_ratio: 0.7
         image_caption_ratio: 0.3

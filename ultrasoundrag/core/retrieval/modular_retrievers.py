@@ -195,6 +195,15 @@ class T2TRetriever(BaseRetriever):
         
         # 获取CLIP模型（使用单例管理器，避免重复加载）
         self.clip_model = get_shared_fetal_clip()
+        
+        # ============ 新增：加载BM25编码器 ============
+        try:
+            from ultrasoundrag.data.processors.bm25_encoder import get_bm25_encoder
+            self.bm25_encoder = get_bm25_encoder()
+            self.logger.info("BM25编码器加载成功")
+        except Exception as e:
+            self.logger.warning(f"BM25编码器加载失败: {e}，混合检索将不可用")
+            self.bm25_encoder = None
 
         self.logger.info("T2T检索器初始化完成")
     
@@ -205,7 +214,7 @@ class T2TRetriever(BaseRetriever):
         Args:
             query: 查询文本
             top_k: 返回结果数量
-            strategy: 检索策略 ("basic", "fusion", "enhanced")
+            strategy: 检索策略 ("basic", "fusion", "enhanced", "hybrid")
             
         Returns:
             T2T检索结果
@@ -215,7 +224,10 @@ class T2TRetriever(BaseRetriever):
         strategy = strategy or self.t2t_config.get('strategy', 'enhanced')
         
         try:
-            if strategy == "enhanced":
+            if strategy == "hybrid":
+                # ============ 新增：BM25混合检索 ============
+                result = self._hybrid_search(query, top_k)
+            elif strategy == "enhanced":
                 result = self._enhanced_search(query, top_k)
             elif strategy == "fusion":
                 result = self._fusion_search(query, top_k)
@@ -398,6 +410,349 @@ class T2TRetriever(BaseRetriever):
         except Exception as e:
             self.logger.error(f"T2T基础检索失败: {e}")
             return self._empty_result(query, str(e))
+    
+    def _hybrid_search(self, query: str, top_k: int) -> Dict[str, Any]:
+        """
+        BM25混合检索 - 结合密集向量和稀疏BM25评分
+        
+        检索流程：
+        1. 执行密集向量检索（Qwen + CLIP）获取top 2K候选
+        2. 从Milvus读取候选文档的tokens和doc_length
+        3. 程序内计算BM25分数
+        4. 融合密集向量分数和BM25分数
+        5. 重排序并返回top K结果
+        
+        Args:
+            query: 查询文本
+            top_k: 最终返回结果数量
+            
+        Returns:
+            混合检索结果
+        """
+        try:
+            # 检查BM25编码器是否可用
+            if not self.bm25_encoder:
+                self.logger.warning("BM25编码器不可用，回退到增强检索")
+                return self._enhanced_search(query, top_k)
+            
+            # 1. 预先计算查询长度（用于后续策略决策）
+            query_tokens = self.bm25_encoder.tokenize(query)
+            query_length = len(query_tokens)
+            
+            # 2. 获取自适应权重
+            qwen_weight, clip_weight = self._get_adaptive_weights(query)
+            
+            # 3. 生成查询向量
+            qwen_vector = self.text_embedder.get_query_embedding(query)
+            tokens = self.clip_model.tokenize_text([query])
+            clip_vector = self.clip_model.encode_text(tokens).cpu().numpy().tolist()[0]
+            
+            if not (qwen_vector and len(qwen_vector) == 1024 and clip_vector and len(clip_vector) == 768):
+                return self._empty_result(query, "向量生成失败")
+            
+            # 3. 应用领域过滤
+            filter_expr, partitions = self._apply_domain_filtering(query)
+            
+            # 4. 密集向量检索（获取更多候选用于BM25重排）
+            # 候选因子优化：根据查询长度动态调整（中文分词阈值）
+            if query_length <= 2:
+                candidate_factor = 5  # 短查询需要更多候选进行BM25筛选
+            elif query_length >= 7:
+                candidate_factor = 2  # 长查询向量已经很精确，少量候选即可
+            else:
+                candidate_factor = 3  # 中等查询使用默认值
+            
+            self.logger.debug(f"候选因子: {candidate_factor}x (查询长度: {query_length}词)")
+            
+            field_to_embedding = {
+                "text_vector_qwen_1024": qwen_vector,
+                "text_vector_clip_768": clip_vector,
+            }
+            weights = {
+                "text_vector_qwen_1024": qwen_weight,
+                "text_vector_clip_768": clip_weight,
+            }
+            
+            raw_results = self.text_manager.search_multi_vectors(
+                field_to_embedding,
+                top_k=top_k * candidate_factor,
+                weights=weights,
+                filter_expr=filter_expr,
+                partition_names=partitions,
+            )
+            
+            if not raw_results:
+                return self._empty_result(query, "密集向量检索无结果")
+            
+            self.logger.info(f"[BM25混合检索] 密集向量检索获取 {len(raw_results)} 个候选")
+            
+            # 5. 提取文档ID并查询BM25元数据
+            doc_ids = [result['id'] for result in raw_results]
+            bm25_metadata = self._fetch_bm25_metadata(doc_ids)
+            
+            # 6. 计算BM25分数（使用前面已分词的query_tokens）
+            bm25_scores = {}
+            missing_metadata_count = 0
+            
+            for doc_id, metadata in bm25_metadata.items():
+                tokens_str = metadata.get('tokens', '')
+                doc_length = metadata.get('doc_length', 0)
+                
+                if not tokens_str or doc_length == 0:
+                    bm25_scores[doc_id] = 0.0
+                    missing_metadata_count += 1
+                    continue
+                
+                doc_tokens = tokens_str.split(',')
+                bm25_score = self._calculate_bm25_score(
+                    query_tokens, 
+                    doc_tokens, 
+                    doc_length
+                )
+                bm25_scores[doc_id] = bm25_score
+            
+            # 统计BM25分数分布
+            valid_scores = [s for s in bm25_scores.values() if s > 0]
+            avg_bm25 = sum(valid_scores) / len(valid_scores) if valid_scores else 0
+            max_bm25 = max(valid_scores) if valid_scores else 0
+            
+            self.logger.info(f"[BM25混合检索] BM25评分完成 - 有效:{len(valid_scores)}/{len(bm25_scores)}, 平均:{avg_bm25:.4f}, 最大:{max_bm25:.4f}")
+            
+            if missing_metadata_count > 0:
+                self.logger.warning(f"⚠️  {missing_metadata_count} 个文档缺少BM25元数据(tokens/doc_length)")
+            
+            # 7. 融合分数
+            fusion_weights = self._get_fusion_weights(query)
+            vector_weight = fusion_weights['vector']
+            bm25_weight = fusion_weights['bm25']
+            
+            self.logger.info(f"[BM25混合检索] 融合权重 - 向量:{vector_weight:.2f}, BM25:{bm25_weight:.2f}")
+            
+            # 规范化分数（归一化到0-1）
+            max_vector_score = max([r.get('distance', 0) for r in raw_results]) if raw_results else 1
+            max_bm25_score = max(bm25_scores.values()) if bm25_scores else 1
+            
+            if max_vector_score == 0:
+                max_vector_score = 1
+            if max_bm25_score == 0:
+                max_bm25_score = 1
+            
+            for result in raw_results:
+                doc_id = result['id']
+                
+                # 规范化向量分数
+                vector_score = result.get('distance', 0) / max_vector_score
+                
+                # 规范化BM25分数
+                bm25_score = bm25_scores.get(doc_id, 0) / max_bm25_score
+                
+                # 融合分数
+                final_score = vector_score * vector_weight + bm25_score * bm25_weight
+                
+                # 存储各项分数
+                result['vector_score'] = vector_score
+                result['bm25_score'] = bm25_score
+                result['final_score'] = final_score
+                result['distance'] = final_score  # 更新distance字段为最终分数
+            
+            # 8. 按最终分数排序
+            raw_results.sort(key=lambda x: x['final_score'], reverse=True)
+            
+            # 9. 转换为标准结果格式
+            results = self._convert_to_retrieval_results(raw_results, 'text_to_text_hybrid')
+            
+            # 10. 应用相似度阈值过滤
+            similarity_threshold = self.t2t_config.get('similarity_threshold', 0.2)
+            filtered_results = [r for r in results if r.score >= similarity_threshold]
+            
+            self.logger.debug(f"混合检索过滤: {len(results)} -> {len(filtered_results)}, 阈值: {similarity_threshold}")
+            
+            # 11. 最终结果
+            final_results = filtered_results[:top_k]
+            
+            return {
+                'query': query,
+                'retrieval_type': 't2t_hybrid',
+                'strategy': 'hybrid',
+                'results': final_results,
+                'total_results': len(final_results),
+                'weights_used': {
+                    'qwen': qwen_weight,
+                    'clip': clip_weight,
+                    'vector': vector_weight,
+                    'bm25': bm25_weight
+                },
+                'domain_filter': filter_expr,
+                'partitions': partitions,
+                'candidate_count': len(raw_results)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"混合检索失败: {e}")
+            # 回退到增强检索
+            return self._enhanced_search(query, top_k)
+    
+    def _fetch_bm25_metadata(self, doc_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+        """
+        从Milvus批量查询BM25元数据（tokens和doc_length）
+        
+        Args:
+            doc_ids: 文档ID列表
+            
+        Returns:
+            {doc_id: {'tokens': str, 'doc_length': int}}
+        """
+        try:
+            # 构造查询表达式
+            id_filter = f"id in {doc_ids}"
+            
+            # 查询结果
+            results = self.text_manager.client.query(
+                collection_name=self.text_manager.collection_name,
+                filter=id_filter,
+                output_fields=["id", "tokens", "doc_length"]
+            )
+            
+            # 转换为字典格式
+            metadata = {}
+            for result in results:
+                doc_id = result.get('id')
+                if doc_id:
+                    metadata[doc_id] = {
+                        'tokens': result.get('tokens', ''),
+                        'doc_length': result.get('doc_length', 0)
+                    }
+            
+            return metadata
+            
+        except Exception as e:
+            self.logger.warning(f"查询BM25元数据失败: {e}")
+            return {}
+    
+    def _calculate_bm25_score(self, query_tokens: List[str], doc_tokens: List[str], doc_length: int) -> float:
+        """
+        计算BM25分数
+        
+        Args:
+            query_tokens: 查询分词列表
+            doc_tokens: 文档分词列表
+            doc_length: 文档长度
+            
+        Returns:
+            BM25分数
+        """
+        # BM25参数
+        k1 = 1.5  # TF饱和度参数
+        b = 0.75  # 长度归一化参数
+        
+        # 平均文档长度（从编码器获取）
+        avg_doc_length = self.bm25_encoder.avg_doc_length if hasattr(self.bm25_encoder, 'avg_doc_length') else 100
+        
+        # 文档词频统计
+        from collections import Counter
+        doc_freq = Counter(doc_tokens)
+        
+        score = 0.0
+        for term in query_tokens:
+            if term not in doc_freq:
+                continue
+            
+            # 词频
+            tf = doc_freq[term]
+            
+            # 长度归一化
+            norm = 1 - b + b * (doc_length / avg_doc_length)
+            
+            # TF部分
+            tf_score = tf / (tf + k1 * norm)
+            
+            # IDF部分（从编码器获取）
+            # 注意：使用calculate_idf方法，会自动计算并缓存IDF值
+            idf = self.bm25_encoder.calculate_idf(term) if hasattr(self.bm25_encoder, 'calculate_idf') else 1.0
+            
+            # 累加分数
+            score += tf_score * idf
+        
+        return score
+    
+    def _get_fusion_weights(self, query: str) -> Dict[str, float]:
+        """
+        根据查询特征动态调整融合权重（医学领域优化版）
+        
+        策略：
+        1. 医学专业术语查询：偏向语义理解（向量70%）
+        2. 极短查询（≤2词）：关键词精确匹配（BM25 60%）
+        3. 长查询（≥12词）：深度语义理解（向量80%）
+        4. 中等查询（3-11词）：均衡策略（向量65%）
+        
+        Args:
+            query: 查询文本
+            
+        Returns:
+            {'vector': float, 'bm25': float}
+        """
+        query_tokens = self.bm25_encoder.tokenize(query)
+        query_length = len(query_tokens)
+        
+        # 医学高频术语列表（核心诊断术语）
+        medical_core_terms = {
+            # 超声相关
+            '超声', '超声检查', '超声诊断', '超声图像', '超声表现', '超声特征',
+            # 甲状腺
+            '甲状腺', '甲状腺结节', '甲状腺肿瘤', '甲状腺囊肿', '甲状腺癌',
+            # 病理特征
+            '低回声', '高回声', '等回声', '无回声', '混合回声',
+            '边界清晰', '边界模糊', '形态规则', '形态不规则',
+            '血流信号', '钙化', '囊性变', '实性',
+            # 诊断术语
+            '良性', '恶性', '鉴别诊断', '辅助检查',
+            # 解剖结构
+            '横切面', '纵切面', '斜切面', '矢状面', '冠状面',
+            '左心室', '右心室', '左心房', '右心房',
+        }
+        
+        # 检查是否包含医学核心术语
+        has_medical_terms = any(term in query for term in medical_core_terms)
+        
+        # 策略优先级调整：查询长度特征优先，然后才是领域特征
+        # 注意：中文分词后词数较少，阈值需要相应调整
+        
+        # 策略1: 极短查询（≤2词）- 精确关键词匹配（优先级最高）
+        if query_length <= 2:
+            if has_medical_terms:
+                # 医学术语的极短查询：向量和BM25均衡
+                weights = {'vector': 0.50, 'bm25': 0.50}
+                self.logger.debug(f"权重策略: 医学极短查询({query_length}词) - {weights}")
+            else:
+                # 通用极短查询：更依赖关键词
+                weights = {'vector': 0.40, 'bm25': 0.60}
+                self.logger.debug(f"权重策略: 通用极短查询({query_length}词) - {weights}")
+            return weights
+        
+        # 策略2: 长查询（≥7词）- 深度语义理解（优先级第二）
+        # 中文分词：7词约等于英文12词的信息量
+        elif query_length >= 7:
+            if has_medical_terms:
+                # 医学长查询：非常依赖语义理解
+                weights = {'vector': 0.85, 'bm25': 0.15}
+                self.logger.debug(f"权重策略: 医学长查询({query_length}词) - {weights}")
+            else:
+                # 通用长查询：依赖语义
+                weights = {'vector': 0.80, 'bm25': 0.20}
+                self.logger.debug(f"权重策略: 通用长查询({query_length}词) - {weights}")
+            return weights
+        
+        # 策略3: 中等查询（3-11词）- 根据领域调整
+        else:
+            if has_medical_terms:
+                # 医学中等查询：偏向语义
+                weights = {'vector': 0.70, 'bm25': 0.30}
+                self.logger.debug(f"权重策略: 医学中等查询({query_length}词) - {weights}")
+            else:
+                # 通用中等查询：均衡策略
+                weights = {'vector': 0.65, 'bm25': 0.35}
+                self.logger.debug(f"权重策略: 通用中等查询({query_length}词) - {weights}")
+            return weights
     
     def _fusion_search(self, query: str, top_k: int) -> Dict[str, Any]:
         """融合文本检索（结合图片caption检索）"""

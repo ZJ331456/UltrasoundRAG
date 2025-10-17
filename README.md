@@ -1,14 +1,20 @@
-# UltrasoundRAG 企业级医学RAG系统 v2.0
+# UltrasoundRAG 企业级医学RAG系统 v3.0
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](CHANGELOG.md)
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
+[![Version](https://img.shields.io/badge/version-3.0.0-green.svg)](CHANGELOG.md)
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com)
 
-## 🚀 v2.0 重大升级
+## 🚀 v3.0 架构重构升级
+
+### 🏗️ 标准化架构
+- **模块化设计**: 采用标准Python包结构，清晰的代码组织
+- **统一API接口**: 重构的API接口，更易用、更强大
+- **增强配置管理**: 动态配置和热更新机制
+- **完整测试框架**: 单元测试、集成测试、性能测试全覆盖
 
 ### 🔒 企业级安全
-- **API安全认证**: Bearer Token + 权限控制系统
+- **API安全认证**: Bearer Token + 权限控制系统  
 - **智能频率限制**: 防护API滥用，支持多维度限流
 - **文件安全验证**: 严格的文件类型和内容安全检查
 - **统一异常处理**: 标准化错误码和异常管理机制
@@ -34,10 +40,11 @@
 ## 目录
 
 - [项目简介](#项目简介)
-- [v2.0新特性](#v20新特性)
+- [v3.0新特性](#v30新特性)
 - [项目架构](#项目架构)
 - [快速开始](#快速开始)
 - [环境配置](#环境配置)
+- [启动与使用](#启动与使用)
 - [API接口说明](#api接口说明)
 - [性能优化特性](#性能优化特性)
 - [监控和运维](#监控和运维)
@@ -64,7 +71,40 @@ UltrasoundRAG是一个**企业级医学超声领域RAG系统**，专为医疗机
 - **科研支持**: 医学文献和图像数据检索
 - **质量控制**: 超声检查标准化和质量评估
 
-## v2.0新特性
+## v3.0新特性
+
+### 🏗️ 架构重构
+
+#### 标准化Python包结构
+```text
+ultrasoundrag/
+├── __init__.py           # 统一导入接口
+├── __main__.py          # 模块化启动入口
+├── api/                 # FastAPI服务
+├── web/                 # Web前端界面
+├── cli/                 # 命令行工具
+├── core/                # 核心业务逻辑
+│   ├── indexing/        # 索引构建
+│   ├── retrieval/       # 检索引擎
+│   ├── generation/      # 答案生成
+│   └── evaluation/      # 评估模块
+├── config/              # 配置管理
+├── model/               # 模型管理
+├── utils/               # 工具函数
+└── data/                # 数据模块
+```
+
+#### 模块化启动方式
+```bash
+# API服务启动
+python -m ultrasoundrag.api
+
+# Web界面启动  
+python -m ultrasoundrag.web
+
+# 命令行工具
+python -m ultrasoundrag.cli
+```
 
 ### 🔐 企业级安全体系
 
@@ -193,7 +233,7 @@ spec:
     spec:
       containers:
       - name: ultrasound-rag
-        image: ultrasound-rag:v2.0
+        image: ultrasound-rag:v3.0
         resources:
           requests:
             memory: "2Gi"
@@ -263,7 +303,7 @@ spec:
 ## 快速开始
 
 ### 1. 环境要求
-- Python 3.10+
+- Python 3.8+ (推荐3.10+)
 - 8GB+ RAM (推荐16GB)
 - CUDA支持的GPU (可选，用于加速)
 - Docker (用于容器化部署)
@@ -281,11 +321,15 @@ conda activate ultrasound-rag
 # 安装依赖
 pip install -r requirements.txt
 
-# 启动 API 服务（方式一）
+# 或使用环境文件创建
+conda env create -f environment.yaml
+conda activate ultrasoundrag
+
+# 启动 API 服务
 python -m ultrasoundrag.api
 
-# 启动 API 服务（方式二）
-uvicorn ultrasoundrag.api.api:app --host 0.0.0.0 --port 8000
+# 指定端口和主机
+python -m ultrasoundrag.api --host 0.0.0.0 --port 8000
 ```
 
 ### 3. 验证安装
@@ -302,8 +346,14 @@ curl -X POST "http://localhost:8000/search" \
 
 ### 4. Web界面访问
 ```bash
-# 启动前端界面
-python frontend.py
+# 启动Web前端界面
+python -m ultrasoundrag.web
+
+# 指定端口启动
+python -m ultrasoundrag.web --port 8502
+
+# 自动打开浏览器
+python -m ultrasoundrag.web --open-browser
 
 # 访问 http://localhost:8501
 ```
@@ -314,78 +364,102 @@ python frontend.py
 
 ```text
 UltrasoundRAG/
-├── data/                # 数据目录：原始数据、向量库和处理后的数据
-│   ├── example_book_vectorstore/      # 文本向量数据库（ChromaDB格式）
-│   ├── example_image_vectorstore_clip_taiyi/ # 图像向量数据库（基于CLIP和太一模型）
-│   ├── processed/            # 处理后的文本和图像数据
-│   │   ├── image/            # 处理后的医学图像
-|   |   |——01_超声标准切面图解.md  #文本数据
-│   │   └── ...               # 其他处理后的文本文件
-├── docs/                # 文档目录==>后续完善
-│   └── ragas评估指标说明.md   # RAG评估指标的详细说明
-├── MedicalRAG/          # 核心代码目录
-│   ├── config/               # 配置文件目录
-│   │   ├── config.py         # 配置加载模块
-│   │   ├── config.yaml       # 主配置文件
-│   │   └── logger.yaml       # 日志配置
-│   ├── eval/                 # 评估模块
-│   │   └── rag_eval.py       # RAG系统评估工具
-│   ├── index/                # 索引创建模块
-│   │   ├── custom_document_parser.py  # 自定义文档解析器
-│   │   ├── document_loader.py         # 文档加载器
-│   │   ├── index_images.py            # 图像索引工具
-│   │   └── run_custom_indexer.py      # 自定义索引器运行脚本
-│   ├── retrival/             # 检索模块
-│   │   ├── hybrid_retrival.py         # 混合检索实现
-│   │   └── query_images.py            # 图像查询工具
-│   ├── utils/                # 工具函数
-│   │   ├── answer_generator.py        # 答案生成器
-│   │   ├── embedding_utils.py         # 嵌入工具
-│   │   ├── image_utils.py             # 图像处理工具
-│   │   ├── llm_utils.py               # 语言模型工具
-│   │   ├── logger.py                  # 日志工具
-│   │   ├── prompt.py                  # 提示词模板
-│   │   ├── rerank_utils.py            # 重排序工具
-│   │   └── retrival_utils.py          # 检索工具函数
-│   ├── __init__.py           # 包初始化文件
-│   ├── medicalrag.py         # 主程序入口
-│   └── streamlit_app.py      # Streamlit Web UI 入口
-├── models/              # 模型目录（不上传到Git）
-│   ├── bge-m3/               # BGE-M3嵌入模型
-│   ├── bge-small-zh-v1.5/    # BGE中文小型嵌入模型
-│   ├── Bunny-v1_0-3B/        # Bunny语言模型
-│   ├── clip-ViT-B-32/        # CLIP视觉-文本模型
+├── ultrasoundrag/       # 核心代码包（v3.0重构）
+│   ├── __init__.py          # 包初始化，统一导入接口
+│   ├── __main__.py          # 模块化启动入口
+│   ├── main.py              # 主程序入口
+│   ├── api/                 # FastAPI服务
+│   │   ├── __init__.py
+│   │   ├── __main__.py      # API服务启动入口
+│   │   ├── api.py           # API路由和端点
+│   │   └── v1/              # API版本控制
+│   ├── web/                 # Web前端界面
+│   │   ├── __init__.py
+│   │   ├── __main__.py      # Web服务启动入口
+│   │   ├── app.py           # Streamlit应用
+│   │   └── frontend.py      # 前端界面
+│   ├── cli/                 # 命令行工具
+│   │   ├── __init__.py
+│   │   └── main.py          # CLI命令入口
+│   ├── core/                # 核心业务逻辑
+│   │   ├── indexing/        # 索引构建模块
+│   │   ├── retrieval/       # 检索引擎模块
+│   │   ├── generation/      # 答案生成模块
+│   │   └── evaluation/      # 评估模块
+│   ├── config/              # 配置管理
+│   │   ├── __init__.py
+│   │   ├── config.yaml      # 主配置文件
+│   │   └── settings.py      # 配置类
+│   ├── model/               # 模型管理
+│   │   ├── __init__.py
+│   │   ├── loader.py        # 模型加载器
+│   │   └── manager.py       # 模型管理器
+│   ├── utils/               # 工具函数
+│   │   ├── __init__.py
+│   │   ├── logger.py        # 日志工具
+│   │   ├── embedding.py     # 嵌入工具
+│   │   └── image_utils.py   # 图像处理工具
+│   └── data/                # 数据模块
+├── data/                    # 数据目录
+│   ├── book/                # 书籍数据
+│   │   ├── markdown/        # Markdown文本数据
+│   │   └── images/          # 图像数据
+│   ├── thesis/              # 论文数据
+│   │   └── pdf/             # PDF论文
+│   └── thyroidagent/        # 甲状腺专项数据
+│       ├── markdown/        # 甲状腺文本数据
+│       └── images/          # 甲状腺图像数据
+├── models/                  # 模型目录
+│   ├── bge-m3/              # BGE-M3嵌入模型
+│   ├── bge-small-zh-v1.5/   # BGE中文小型嵌入模型
 │   ├── clip-vit-large-patch14/ # CLIP大型模型
-│   ├── MiniCPM-V-2/          # MiniCPM视觉模型V2
-│   ├── MiniCPM-V-2_6/        # MiniCPM视觉模型V2.6
 │   ├── Qwen3-Embedding-0.6B/ # 通义千问嵌入模型
 │   ├── Qwen3-Reranker-0.6B/  # 通义千问重排序模型
-│   ├── siglip-so400m-patch14-384/ # SigLIP视觉模型
 │   └── Taiyi-CLIP-Roberta-large-326M-Chinese/ # 太一中文CLIP模型
-├── results/             # 结果输出目录（不上传到Git）
-│   ├── eval/                 # 评估结果
-│   └── retrival/             # 检索结果
-│   
-├── environment.yaml     # Conda环境配置文件
-├── README.md            # 项目说明文档
-└── requirements.txt     # 依赖包列表
+├── test/                    # 测试目录
+│   ├── test_api.py          # API测试
+│   ├── test_ultrasoundrag.py # 集成测试
+│   └── ...                  # 其他测试文件
+├── result/                  # 结果输出目录
+├── logs/                    # 日志目录
+├── scripts/                 # 脚本目录
+├── pyproject.toml           # 项目配置（标准化）
+├── setup.py                 # 安装脚本
+├── requirements.txt         # 依赖包列表
+├── environment.yaml         # Conda环境配置
+├── Makefile                 # Make构建文件
+├── README.md                # 项目说明文档
+└── 服务启动命令.md           # 服务启动说明
 ```
 
 ### 核心模块说明
 
-1. **streamlit_app.py**: 基于 Streamlit 的 Web UI 界面，提供友好的交互式问答、图片检索和索引管理功能。
-2. **MedicalRAG/medicalrag.py**: 系统核心逻辑和命令行入口，包含交互式界面和主要功能实现
-3. **MedicalRAG/config/**: 配置管理，控制系统行为和模型路径
-4. **MedicalRAG/index/**: 负责文档和图像的索引创建
-5. **MedicalRAG/retrival/**: 实现混合检索和图像查询功能
-6. **MedicalRAG/utils/**: 提供各类工具函数，如答案生成、嵌入计算等
-7. **MedicalRAG/eval/**: 提供系统评估功能
+#### v3.0架构特点
+1. **标准化包结构**: 采用现代Python项目标准结构
+2. **模块化设计**: 清晰的功能模块划分，易于维护和扩展
+3. **统一入口**: 通过`python -m`模块化启动各个服务
+4. **配置集中**: 统一的配置管理和环境设置
+
+#### 主要模块
+
+1. **ultrasoundrag.api**: FastAPI服务，提供RESTful API接口
+2. **ultrasoundrag.web**: Web前端界面，提供可视化操作界面
+3. **ultrasoundrag.cli**: 命令行工具，支持批量操作和自动化
+4. **ultrasoundrag.core**: 核心业务逻辑
+   - `indexing`: 文档和图像索引构建
+   - `retrieval`: 多模态检索引擎
+   - `generation`: 智能答案生成
+   - `evaluation`: 系统评估和指标
+5. **ultrasoundrag.config**: 配置管理系统
+6. **ultrasoundrag.model**: 模型加载和管理
+7. **ultrasoundrag.utils**: 通用工具函数
 
 ### 数据目录说明
 
-1. **data/book_vectorstore/**: 存储文本向量数据库
-2. **data/image_vectorstore_clip_taiyi/**: 存储图像向量数据库
-3. **data/processed/**: 存储处理后的文本和图像
+1. **data/book/**: 医学书籍数据（Markdown + 图像）
+2. **data/thesis/**: 学术论文数据（PDF）
+3. **data/thyroidagent/**: 甲状腺专项数据集
+4. **models/**: 本地模型文件存储
 
 ---
 
@@ -442,7 +516,7 @@ UltrasoundRAG/
    git clone https://huggingface.co/openai/clip-vit-large-patch14
    ```
 
-3. **如需自定义模型路径，请在 `MedicalRAG/config/config.yaml` 中修改相关配置。**
+3. **如需自定义模型路径，请在 `ultrasoundrag/config/config.yaml` 中修改相关配置。**
 
 ---
 
@@ -453,9 +527,17 @@ UltrasoundRAG/
 通过 Streamlit 启动一个可视化的交互界面，支持文本问答、图片上传检索和在线重建索引等功能。
 
 ```bash
-# 在项目根目录下运行
-cd /media/ps/data-ssd/UltrasoundRAG/UltrasoundRAG
-python frontend.py
+# v3.0 标准化启动方式
+python -m ultrasoundrag.web
+
+# 指定端口启动
+python -m ultrasoundrag.web --port 8502
+
+# 指定主机和端口
+python -m ultrasoundrag.web --host 0.0.0.0 --port 8501
+
+# 自动打开浏览器
+python -m ultrasoundrag.web --open-browser
 ```
 
 然后在浏览器中访问 `http://localhost:8501`
@@ -496,18 +578,59 @@ python frontend.py
 - "图1-1 肝脏超声检查"
 - "Figure 3.2 胎儿发育图"
 
-### 3. **交互式命令行模式**
+### 3. **API服务模式**
 
 ```bash
-python -m MedicalRAG/medicalrag
+# v3.0 标准化API启动
+python -m ultrasoundrag.api
+
+# 指定端口启动
+python -m ultrasoundrag.api --port 8001
+
+# 指定主机和端口
+python -m ultrasoundrag.api --host 0.0.0.0 --port 8000
+
+# 启用自动重载（开发模式）
+python -m ultrasoundrag.api --reload
+
+# 指定工作进程数
+python -m ultrasoundrag.api --workers 4
 ```
 
-- 按提示选择是否重建索引、运行模式（交互/文件/默认测试）。
-- 交互模式下可直接输入问题进行检索与问答。
+服务启动后访问 `http://localhost:8000/docs` 查看交互式API文档。
 
-### 4. **批量问答/评估**
+### 4. **命令行工具模式**
 
-- 将问题列表写入 json 文件（如 `data/truth_query.json`），选择"文件模式"运行。
+```bash
+# 使用CLI工具
+python -m ultrasoundrag.cli [命令]
+
+# 查看可用命令
+python -m ultrasoundrag.cli --help
+```
+
+### 5. **数据库管理**
+
+详细的数据库管理命令请参考项目根目录下的 `服务启动命令.md` 文件，包括：
+- 场景1：重构所有集合（完全重建）
+- 场景2：添加新文件到集合（增量更新）
+- 场景3：更新单个文档
+- 场景4：删除单个文档
+- 场景5：删除整个集合
+- 场景6：删除整个数据库
+
+快速示例：
+
+```bash
+# 重建所有索引
+python -c "from ultrasoundrag.core.indexing import build_all_indexes; build_all_indexes(recreate=True)"
+
+# 增量更新
+python -c "from ultrasoundrag.core.indexing import update_documents_incremental; update_documents_incremental()"
+
+# 更新单个文档
+python -c "from ultrasoundrag.core.indexing import update_single_document; update_single_document('文档路径.md', '数据集名称')"
+```
 
 ---
 
@@ -516,12 +639,16 @@ python -m MedicalRAG/medicalrag
 ### 启动 API 服务
 
 ```bash
+# v3.0 推荐方式：模块化启动
 python -m ultrasoundrag.api
-# 或
-uvicorn ultrasoundrag.api.api:app --host 0.0.0.0 --port 8000
+
+# 自定义配置
+python -m ultrasoundrag.api --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 服务启动后访问 `http://localhost:8000/docs` 查看交互式文档（Swagger UI），`/health` 查看健康检查。
+
+**注意**: API服务已在 v3.0 中进行了重构，提供更好的性能和稳定性。
 
 ### 基础信息
 
@@ -582,20 +709,20 @@ curl -X POST "http://localhost:8000/search" \
   }'
 ```
 
-更多参数、响应示例与错误说明请参见 `test/API_Documentation.md`。
+更多参数、响应示例与错误说明请参见 `ultrasoundrag/api/README.md` 和 `test/` 目录下的测试文件。
 
 ---
 
 ## 性能优化特性
 
-### v2.0 性能优化突破
+### v3.0 持续优化增强
 
-本项目在v2.0版本中实现了全方位的性能优化，系统性能得到了质的提升：
+本项目在v3.0版本中继续保持并增强了全方位的性能优化，在v2.0基础上进一步提升系统性能：
 
 #### 1. 智能缓存系统
 
 ```python
-from UltrasoundRAG.utils.performance import cached, cache_manager
+from ultrasoundrag.utils.performance import cached, cache_manager
 
 # 多级缓存策略
 @cached(cache_name="embedding_cache", ttl=600, maxsize=10000)
@@ -620,7 +747,7 @@ print(f"嵌入缓存命中率: {stats['embedding_cache']['hit_rate']:.2%}")
 #### 2. 智能模型管理
 
 ```python
-from UltrasoundRAG.utils.performance import smart_model_manager
+from ultrasoundrag.utils.performance import smart_model_manager
 
 # 智能模型工厂注册
 smart_model_manager.register_model_factory(
@@ -647,7 +774,7 @@ print(f"内存使用率: {stats['memory_usage_ratio']:.2%}")
 #### 3. 批处理性能优化
 
 ```python
-from UltrasoundRAG.utils.performance import BatchProcessor, AsyncBatchProcessor
+from ultrasoundrag.utils.performance import BatchProcessor, AsyncBatchProcessor
 
 # 同步批处理
 batch_processor = BatchProcessor(
@@ -680,7 +807,7 @@ async def handle_concurrent_requests(queries):
 #### 实时监控指标
 
 ```python
-from UltrasoundRAG.utils.monitoring import system_monitor
+from ultrasoundrag.utils.monitoring import system_monitor
 
 # 启动全面监控
 system_monitor.start_monitoring()
@@ -704,7 +831,7 @@ def enhanced_search(query, mode):
     return search_results
 
 # 指标查询
-from UltrasoundRAG.utils.performance import performance_monitor
+from ultrasoundrag.utils.performance import performance_monitor
 
 metrics = performance_monitor.get_stats()
 print(f"API请求总数: {metrics['counters']['api_requests_total']}")
@@ -717,7 +844,7 @@ print(f"平均响应时间: {metrics['metrics']['api_post']['avg']:.3f}s")
 #### 自动化健康检查
 
 ```python
-from UltrasoundRAG.utils.monitoring import system_monitor
+from ultrasoundrag.utils.monitoring import system_monitor
 
 # 注册自定义健康检查
 def check_model_availability():
@@ -757,7 +884,7 @@ curl -H "Authorization: Bearer admin_key" \
 #### 结构化日志
 
 ```python
-from UltrasoundRAG.utils.monitoring import StructuredLogger
+from ultrasoundrag.utils.monitoring import StructuredLogger
 
 logger = StructuredLogger("retrieval_service")
 
@@ -809,7 +936,7 @@ logger.log_model_operation(
 #### 智能告警配置
 
 ```python
-from UltrasoundRAG.utils.monitoring import system_monitor, AlertLevel
+from ultrasoundrag.utils.monitoring import system_monitor, AlertLevel
 
 # 注册自定义告警处理器
 def email_alert_handler(alert):
@@ -941,7 +1068,7 @@ spec:
     spec:
       containers:
       - name: ultrasound-rag
-        image: ultrasound-rag:v2.0
+        image: ultrasound-rag:v3.0
         ports:
         - containerPort: 8000
         env:
@@ -1076,14 +1203,24 @@ scrape_configs:
 
 ## 常见问题
 
-### v2.0 系统问题
+### v3.0 系统问题
+
+#### 架构和部署
+- **Q: v3.0与v2.0有什么区别？**
+  A: v3.0采用标准化Python包结构，模块化设计更清晰，使用`python -m ultrasoundrag.xxx`方式启动各个服务，更易于维护和扩展。
+
+- **Q: 如何从v2.0迁移到v3.0？**
+  A: 主要变化是启动方式和导入路径。将`MedicalRAG`改为`ultrasoundrag`，使用新的模块化启动命令。数据和配置文件基本兼容。
+
+- **Q: 服务启动失败？**
+  A: 检查是否使用了正确的启动命令（`python -m ultrasoundrag.api`或`python -m ultrasoundrag.web`），确保在项目根目录执行。
 
 #### 性能相关
 - **Q: 系统响应速度慢？**
   A: 检查缓存配置，确保智能缓存已启用。查看缓存命中率：`curl -H "Authorization: Bearer admin_key" http://localhost:8000/system/status`
 
 - **Q: 内存使用过高？**
-  A: v2.0版本已优化内存使用80%，检查智能模型管理器状态，确保自动清理机制正常工作。
+  A: v3.0继承了v2.0的优化，内存使用已减少80%。检查智能模型管理器状态，确保自动清理机制正常工作。
 
 - **Q: 并发请求处理慢？**
   A: 启用批处理优化，调整`batch_size`和`max_wait_time`参数。
@@ -1105,22 +1242,73 @@ scrape_configs:
 - **Q: 告警过多？**
   A: 调整告警阈值或检查系统资源使用情况，优化系统配置。
 
-### 传统问题
-- **模型未下载/路径错误**：请检查 `models/` 目录结构和 `config.yaml` 配置。
+### 常见问题
+- **模型未下载/路径错误**：请检查 `models/` 目录结构和 `ultrasoundrag/config/config.yaml` 配置。
 - **依赖冲突/缺包**：请确保已激活虚拟环境并正确安装 requirements.txt。
 - **索引重建慢/内存占用高**：建议在内存充足的环境下运行，或分批处理数据。
-- **模型加载慢**：v2.0已大幅优化，从15-20秒降至2-4秒。
-- **前端启动问题**：确保在项目根目录运行 `python frontend.py`。
+- **模型加载慢**：v3.0已大幅优化，从15-20秒降至2-4秒。
+- **前端启动问题**：使用 `python -m ultrasoundrag.web` 启动。
+- **导入错误**：确保使用 `from ultrasoundrag import ...` 而不是旧的 `from MedicalRAG import ...`。
 
 ## 故障排除
 
-如果遇到导入错误，请检查：
+### v3.0 常见问题排查
 
-1. 项目路径是否正确
-2. 依赖包是否已安装
-3. 配置文件是否存在
-4. Milvus服务是否正在运行
+如果遇到问题，请按以下步骤检查：
+
+1. **环境检查**
+   - Python版本是否为3.8+（推荐3.10+）
+   - 虚拟环境是否已激活
+   - 依赖包是否完整安装：`pip list | grep -E "torch|transformers|pymilvus"`
+
+2. **路径和配置**
+   - 项目路径是否正确
+   - 配置文件是否存在：`ultrasoundrag/config/config.yaml`
+   - 模型文件是否已下载到 `models/` 目录
+
+3. **服务依赖**
+   - Milvus向量数据库是否正在运行
+   - 网络连接是否正常
+   - 端口是否被占用（默认8000/8501）
+
+4. **导入问题**
+   - 使用新的导入方式：`from ultrasoundrag import ...`
+   - 确保在项目根目录执行命令
+   - 检查PYTHONPATH环境变量
+
+5. **日志查看**
+   - 查看日志文件：`logs/` 目录
+   - API日志：`ultrasoundrag/api/logs/`
+   - 系统日志：`ultrasoundrag/logs/`
+
+### 快速诊断命令
+
+```bash
+# 检查Python环境
+python --version
+python -c "import ultrasoundrag; print(ultrasoundrag.__version__)"
+
+# 检查依赖
+pip check
+
+# 测试API健康
+curl http://localhost:8000/health
+
+# 测试导入
+python -c "from ultrasoundrag import get_config; print(get_config())"
+```
 
 ---
 
-> **说明：本项目已实现模型加载优化，具有更快的启动速度、更低的内存占用和更好的用户体验。系统采用单例模式和智能缓存机制，确保高效稳定的性能表现。**
+## v3.0 升级说明
+
+> **v3.0重要更新**：本项目已完成架构重构，采用标准化Python包结构，提供更清晰的模块化设计和更强大的功能。主要变化：
+> 
+> - ✅ **标准化结构**: 符合Python最佳实践的包结构
+> - ✅ **模块化启动**: 通过 `python -m` 方式启动各个服务
+> - ✅ **统一API**: 简化的导入和使用方式
+> - ✅ **增强测试**: 完整的测试框架和持续集成
+> - ✅ **性能优化**: 继承并增强v2.0的所有性能优化
+> - ✅ **易于维护**: 更清晰的代码组织和文档
+>
+> 系统采用智能模型管理和缓存机制，确保高效稳定的性能表现。
