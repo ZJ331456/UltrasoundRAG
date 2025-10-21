@@ -100,22 +100,19 @@ app = FastAPI(
 
 # ==================== 中间件配置 ====================
 
-# CORS中间件
-allowed_origins = os.getenv('ALLOWED_ORIGINS', 
-    'http://localhost:8501,http://127.0.0.1:8501,http://localhost:5173,http://127.0.0.1:5173').split(',')
+# CORS中间件 - 允许所有来源
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],  # 允许所有来源
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+    allow_methods=["*"],  # 允许所有HTTP方法
+    allow_headers=["*"],  # 允许所有请求头
 )
 
-# 信任主机中间件
-allowed_hosts = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,*.localhost').split(',')
+# 信任主机中间件 - 允许所有主机
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=allowed_hosts
+    allowed_hosts=["*"]  # 允许所有主机
 )
 
 
